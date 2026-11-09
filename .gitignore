@@ -1,0 +1,35 @@
+# Secrets — never commit local environment files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Runtime data and generated reports
+data/*
+!data/.gitkeep
+*.db
+*.db-shm
+*.db-wal
+*.sqlite*
+*.jsonl
+evaluation.md
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.coverage
+
+# Optional browser automation
+playwright-report/
+test-results/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,2 @@
+# Optional and comparatively large. Do not install for the Android chat milestone.
+playwright>=1.49,<2

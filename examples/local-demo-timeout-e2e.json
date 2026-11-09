@@ -1,0 +1,14 @@
+{
+  "url": "http://127.0.0.1:8000/demo?failure=timeout",
+  "timeout_seconds": 10,
+  "retries": 1,
+  "actions": [
+    { "type": "click", "selector": "#create-demo-inbox" },
+    { "type": "wait_for_value", "selector": "#email" },
+    { "type": "click", "selector": "#demo-continue" },
+    { "type": "wait_for", "selector": "#otp" },
+    { "type": "click", "selector": "#retrieve-otp" },
+    { "type": "wait_for_text", "selector": "#demo-status", "text": "Email timeout" },
+    { "type": "click", "selector": "#demo-reset" }
+  ]
+}

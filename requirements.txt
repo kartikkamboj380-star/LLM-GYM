@@ -1,0 +1,3 @@
+# The core application intentionally uses only the Python 3.11+ standard library.
+# There are no mandatory pip dependencies.
+# Optional browser testing dependencies are in requirements-automation.txt.

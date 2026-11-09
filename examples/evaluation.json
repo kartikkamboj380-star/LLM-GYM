@@ -1,0 +1,20 @@
+[
+  {
+    "id": "capital-france",
+    "prompt": "Answer with only the city name. What is the capital of France?",
+    "expected": "Paris",
+    "match": "exact"
+  },
+  {
+    "id": "arithmetic",
+    "prompt": "Answer with only the number. What is 17 + 25?",
+    "expected": "42",
+    "match": "exact"
+  },
+  {
+    "id": "json-shape",
+    "prompt": "Return a compact JSON object with a single key named status and value ok.",
+    "expected": "^\\{\\s*\"status\"\\s*:\\s*\"ok\"\\s*\\}$",
+    "match": "regex"
+  }
+]
