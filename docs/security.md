@@ -21,7 +21,7 @@ Do not store sensitive personal information or credentials in memories. The extr
 
 Only automate systems you own or have explicit permission to test. Respect provider terms, quotas, robots/access restrictions, and API documentation. No module in this repository should be used to bypass CAPTCHA, authentication, anti-abuse systems, rate limits, account restrictions, or service limits.
 
-Temporary email does not guarantee OTP delivery. Do not create multiple accounts to evade limits. The mock email flow is the default because it exercises parsing without involving a third party.
+Temporary email does not guarantee OTP delivery. Do not create multiple accounts to evade limits. The mock email flow is the default because it exercises parsing without involving a third party. OTPs and mock bodies remain process-local and are excluded from request logs and sanitized poll reports. Authorized polling responses contain them for the active local test, so protect those responses and delete the mock inbox when finished.
 
 ## Reporting and data
 

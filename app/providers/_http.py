@@ -48,6 +48,8 @@ def request_json(
         raise ProviderError(redact_secrets(f"Provider returned HTTP {exc.code}: {detail}")) from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise ProviderError(redact_secrets(f"Provider network error: {exc.reason if hasattr(exc, 'reason') else exc}")) from exc
+    if not raw.strip():
+        return {}
     try:
         result = json.loads(raw)
     except json.JSONDecodeError as exc:

@@ -98,14 +98,28 @@
       <div class="email-layout">
         <section class="card email-controls">
           <ol class="workflow-steps">
-            <li><div><strong>Create a local inbox</strong><p>Uses the reserved .test domain. No real account is created.</p></div><button id="create-inbox" class="button secondary compact">Create</button></li>
-            <li><div><strong>Inject a demo message</strong><p>Generate a verification email inside this app.</p></div><div class="inline-controls"><select id="code-type" aria-label="Verification code type"><option value="numeric">Numeric</option><option value="alphanumeric">Alphanumeric</option></select><button id="send-demo" class="button secondary compact" disabled>Send</button></div></li>
-            <li><div><strong>Poll and parse</strong><p>Check immediately for a contextual verification code.</p></div><button id="poll-inbox" class="button primary compact" disabled>Check inbox</button></li>
+            <li><div><strong>Create a local inbox</strong><p>Reserved .test domain. No real account is created.</p></div><div class="inline-controls"><select id="inbox-ttl" aria-label="Inbox lifetime"><option value="900">15 minutes</option><option value="60">1 minute</option><option value="0">Already expired</option></select><button id="create-inbox" class="button secondary compact">Create</button></div></li>
+            <li><div><strong>Inject a demo message</strong><p>Generate a verification email inside this app.</p><label class="checkbox-label"><input id="demo-html" type="checkbox"> HTML body</label></div><div class="inline-controls"><select id="code-type" aria-label="Verification code type"><option value="numeric">Numeric</option><option value="alphanumeric">Alphanumeric</option></select><button id="send-demo" class="button secondary compact" disabled>Send</button></div></li>
+            <li><div><strong>Poll and parse</strong><p>Bounded polling with explicit status and cancellation.</p></div><div class="inline-controls"><button id="poll-inbox" class="button primary compact" disabled>Check inbox</button><button id="cancel-poll" class="button secondary compact" disabled>Cancel</button></div></li>
+            <li><div><strong>Simulate provider behavior</strong><p>Test recovery without a real external service.</p></div><div class="inline-controls"><select id="failure-mode" aria-label="Mock provider failure mode"><option value="none">Normal</option><option value="provider_error">Provider error</option><option value="rate_limit">Rate limit</option><option value="timeout">Timeout</option></select><button id="apply-failure" class="button secondary compact" disabled>Apply</button></div></li>
           </ol>
+          <details class="otp-options"><summary>Polling and OTP rules</summary><div class="rule-grid">
+            <label>Timeout (seconds)<input id="poll-timeout" type="number" min="0" max="60" step="0.1" value="0"></label>
+            <label>Interval (seconds)<input id="poll-interval" type="number" min="0.1" max="10" step="0.1" value="1"></label>
+            <label>Backoff multiplier<input id="poll-backoff" type="number" min="1" max="2" step="0.1" value="1"></label>
+            <label>Maximum code age<input id="otp-max-age" type="number" min="1" max="86400" value="600"></label>
+            <label>Expected length (optional)<input id="otp-length" type="number" min="4" max="12" placeholder="Any"></label>
+            <label>Sender filter (optional)<input id="otp-sender" type="email" placeholder="verification@example.test"></label>
+            <label>Subject contains<input id="otp-subject" type="text" placeholder="LLM-GYM"></label>
+            <label>Application context<input id="otp-application" type="text" placeholder="LLM-GYM"></label>
+            <label>Test run context<input id="otp-run" type="text" placeholder="run-42"></label>
+          </div></details>
         </section>
         <section class="card inbox-card">
           <p class="eyebrow">Inbox</p>
           <h2 id="inbox-address">No inbox created</h2>
+          <p id="inbox-status" class="inbox-meta">Status: not created</p><p id="inbox-expiry" class="inbox-meta">Expiration: —</p>
+          <div class="button-row"><button id="copy-inbox" class="button secondary compact" disabled>Copy address</button><button id="delete-inbox" class="button danger compact" disabled>Delete inbox</button></div>
           <div id="verification-result" class="verification-result" aria-live="polite"><span>Awaiting test</span><p>Create an inbox and send a demo message.</p></div>
           <div id="email-messages" class="email-messages"></div>
         </section>

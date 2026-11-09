@@ -306,15 +306,24 @@ async function saveMemory(event) {
   } catch (error) { toast(error.message, true); }
 }
 
+function setInboxControls(enabled) {
+  ["#send-demo", "#poll-inbox", "#apply-failure", "#copy-inbox", "#delete-inbox"].forEach((selector) => { $(selector).disabled = !enabled; });
+}
+
+function renderInbox(inbox) {
+  $("#inbox-address").textContent = inbox.address;
+  $("#inbox-status").textContent = `Status: ${inbox.status}`;
+  $("#inbox-expiry").textContent = `Expiration: ${inbox.expires_at || "not supplied"}`;
+}
+
 async function createInbox() {
   const button = $("#create-inbox");
   busy(button, true);
   try {
-    const inbox = await api("/api/email/mock/inboxes", { method: "POST", body: {} });
+    const inbox = await api("/api/email/mock/inboxes", { method: "POST", body: { ttl_seconds: Number($("#inbox-ttl").value) } });
     state.inboxId = inbox.id;
-    $("#inbox-address").textContent = inbox.address;
-    $("#send-demo").disabled = false;
-    $("#poll-inbox").disabled = false;
+    renderInbox(inbox);
+    setInboxControls(true);
     $("#email-messages").replaceChildren();
     $("#verification-result").innerHTML = "<span>Inbox ready</span><p>Send a demo verification message.</p>";
   } catch (error) { toast(error.message, true); }
@@ -340,31 +349,88 @@ function renderEmails(messages) {
 async function sendDemo() {
   if (!state.inboxId) return;
   try {
-    await api(`/api/email/mock/inboxes/${encodeURIComponent(state.inboxId)}/demo`, { method: "POST", body: { code_type: $("#code-type").value } });
+    await api(`/api/email/mock/inboxes/${encodeURIComponent(state.inboxId)}/demo`, { method: "POST", body: { code_type: $("#code-type").value, html: $("#demo-html").checked } });
+    renderInbox(await api(`/api/email/mock/inboxes/${encodeURIComponent(state.inboxId)}`));
     toast("Demo message injected locally. Check the inbox to parse it.");
     $("#verification-result").innerHTML = "<span>Message delivered</span><p>Run the parser to detect its code.</p>";
   } catch (error) { toast(error.message, true); }
+}
+
+function selectedOTPRules() {
+  const rules = { max_age_seconds: Number($("#otp-max-age").value) };
+  if ($("#otp-length").value) rules.expected_length = Number($("#otp-length").value);
+  const textRules = { sender: "#otp-sender", subject: "#otp-subject", expected_application: "#otp-application", expected_test_run: "#otp-run" };
+  Object.entries(textRules).forEach(([name, selector]) => { if ($(selector).value.trim()) rules[name] = $(selector).value.trim(); });
+  return rules;
 }
 
 async function pollInbox() {
   if (!state.inboxId) return;
   const button = $("#poll-inbox");
   busy(button, true, "Checking…");
+  $("#cancel-poll").disabled = false;
   try {
-    const result = await api(`/api/email/mock/inboxes/${encodeURIComponent(state.inboxId)}/poll`, { method: "POST", body: { timeout_seconds: 0, interval_seconds: 1 } });
+    const result = await api(`/api/email/mock/inboxes/${encodeURIComponent(state.inboxId)}/poll`, {
+      method: "POST",
+      body: {
+        timeout_seconds: Number($("#poll-timeout").value),
+        interval_seconds: Number($("#poll-interval").value),
+        backoff_multiplier: Number($("#poll-backoff").value),
+        rules: selectedOTPRules(),
+      },
+    });
     const resultBox = $("#verification-result");
     resultBox.replaceChildren();
     const status = document.createElement("span");
-    status.textContent = result.found ? "Code verified" : "No code found";
+    status.textContent = result.found ? "Code verified" : `Status: ${result.status}`;
     const code = document.createElement("strong");
     code.className = "parsed-code";
     code.textContent = result.found ? result.code : "—";
     const detail = document.createElement("p");
-    detail.textContent = result.found ? "Parsed from an authorized mock message." : "Inject a demo message, then try again.";
+    detail.textContent = result.found ? "Parsed from an authorized mock message; not saved permanently." : (result.error || "No code found.");
     resultBox.append(status, code, detail);
     renderEmails(result.messages);
+    renderInbox(await api(`/api/email/mock/inboxes/${encodeURIComponent(state.inboxId)}`));
   } catch (error) { toast(error.message, true); }
-  finally { busy(button, false); }
+  finally { busy(button, false); $("#cancel-poll").disabled = true; }
+}
+
+async function cancelPolling() {
+  if (!state.inboxId) return;
+  try {
+    const result = await api(`/api/email/mock/inboxes/${encodeURIComponent(state.inboxId)}/cancel`, { method: "POST", body: {} });
+    toast(result.cancelled ? "Polling cancellation requested." : "No active poll to cancel.");
+  } catch (error) { toast(error.message, true); }
+}
+
+async function applyFailureMode() {
+  if (!state.inboxId) return;
+  try {
+    const result = await api(`/api/email/mock/inboxes/${encodeURIComponent(state.inboxId)}/failure`, { method: "POST", body: { mode: $("#failure-mode").value } });
+    toast(`Mock behavior set to ${result.failure_mode}.`);
+  } catch (error) { toast(error.message, true); }
+}
+
+async function copyInboxAddress() {
+  if (!state.inboxId) return;
+  try {
+    await navigator.clipboard.writeText($("#inbox-address").textContent);
+    toast("Mock address copied.");
+  } catch (error) { toast("Clipboard unavailable; select the displayed address manually.", true); }
+}
+
+async function deleteInbox() {
+  if (!state.inboxId || !window.confirm("Delete this mock inbox and its ephemeral messages?")) return;
+  try {
+    await api(`/api/email/mock/inboxes/${encodeURIComponent(state.inboxId)}`, { method: "DELETE" });
+    state.inboxId = null;
+    setInboxControls(false);
+    $("#inbox-address").textContent = "No inbox created";
+    $("#inbox-status").textContent = "Status: deleted";
+    $("#inbox-expiry").textContent = "Expiration: —";
+    $("#email-messages").replaceChildren();
+    toast("Mock inbox and messages deleted.");
+  } catch (error) { toast(error.message, true); }
 }
 
 async function loadArenas() {
@@ -393,6 +459,10 @@ async function initialize() {
   $("#create-inbox").addEventListener("click", createInbox);
   $("#send-demo").addEventListener("click", sendDemo);
   $("#poll-inbox").addEventListener("click", pollInbox);
+  $("#cancel-poll").addEventListener("click", cancelPolling);
+  $("#apply-failure").addEventListener("click", applyFailureMode);
+  $("#copy-inbox").addEventListener("click", copyInboxAddress);
+  $("#delete-inbox").addEventListener("click", deleteInbox);
   $("#load-arenas").addEventListener("click", loadArenas);
   $("#chat-input").addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key === "Enter") $("#chat-form").requestSubmit();

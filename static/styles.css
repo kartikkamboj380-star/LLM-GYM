@@ -147,8 +147,15 @@ input:focus, textarea:focus, select:focus { border-color: #d7ff7270; }
 .workflow-steps li::before { content: counter(steps, decimal-leading-zero); position: absolute; left: 0; color: var(--accent); font-family: ui-monospace, monospace; font-size: .72rem; }
 .workflow-steps strong { font-size: .85rem; }
 .workflow-steps p { margin: 4px 0 0; color: var(--muted); font-size: .72rem; }
-.inline-controls { display: flex; flex: none; gap: 5px; }
-.inline-controls select { width: 80px; padding: 5px; font-size: .68rem; }
+.inline-controls { display: flex; flex: none; flex-wrap: wrap; gap: 5px; }
+.inline-controls select { max-width: 110px; padding: 5px; font-size: .68rem; }
+.checkbox-label { display: flex; align-items: center; gap: 5px; margin-top: 7px; color: var(--muted); font-size: .68rem; }
+.otp-options { margin-top: 18px; color: var(--muted); font-size: .75rem; }
+.otp-options summary { min-height: 40px; cursor: pointer; color: var(--text); }
+.rule-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding-top: 10px; }
+.rule-grid label { display: grid; gap: 5px; }
+.rule-grid input { min-width: 0; width: 100%; padding: 9px; font-size: .72rem; }
+.inbox-meta { margin: 5px 0; color: var(--muted); font-size: .7rem; overflow-wrap: anywhere; }
 .inbox-card h2 { overflow-wrap: anywhere; color: var(--muted); font-family: ui-monospace, monospace; font-size: .85rem; font-weight: 500; }
 .verification-result { display: flex; min-height: 150px; margin: 24px 0; padding: 20px; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed #3c5141; border-radius: 12px; text-align: center; }
 .verification-result span { color: var(--accent); font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
@@ -205,6 +212,7 @@ footer { display: flex; justify-content: space-between; gap: 16px; padding: 18px
   .provider-field select { max-width: 180px; }
   .workflow-steps li { align-items: flex-start; flex-wrap: wrap; padding-left: 32px; }
   .workflow-steps li > .button, .workflow-steps li > .inline-controls { margin-left: 0; }
+  .rule-grid { grid-template-columns: 1fr; }
   .feature-list li { flex-direction: column; }
   .feature-list span { text-align: left; }
   footer { flex-direction: column; gap: 4px; }

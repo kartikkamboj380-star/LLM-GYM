@@ -125,6 +125,60 @@ class APIIntegrationTests(unittest.TestCase):
         self.assertTrue(result["found"])
         self.assertRegex(result["code"], r"^[A-Z0-9]{6}$")
 
+    def test_mock_email_lifecycle_html_rules_and_failures(self):
+        status, capabilities, _ = self.request("/api/email/mock/capabilities")
+        self.assertEqual(200, status)
+        self.assertTrue(capabilities["expiration"])
+        status, inbox, _ = self.request("/api/email/mock/inboxes", "POST", {"local_part": "api-lifecycle", "ttl_seconds": 900})
+        self.assertEqual("api-lifecycle@example.test", inbox["address"])
+        inbox_id = inbox["id"]
+        status, demo, _ = self.request(
+            f"/api/email/mock/inboxes/{inbox_id}/demo",
+            "POST",
+            {"code_type": "alphanumeric", "html": True},
+        )
+        self.assertEqual(201, status)
+        self.assertIn("verification code", demo["html"])
+        status, result, _ = self.request(
+            f"/api/email/mock/inboxes/{inbox_id}/poll",
+            "POST",
+            {
+                "timeout_seconds": 0,
+                "backoff_multiplier": 1.5,
+                "rules": {"expected_length": 6, "sender": "verification@example.test", "expected_application": "LLM-GYM"},
+            },
+        )
+        self.assertEqual(200, status)
+        self.assertEqual("verified", result["status"])
+        status, fetched, _ = self.request(f"/api/email/mock/inboxes/{inbox_id}/messages/{demo['id']}")
+        self.assertEqual(demo["id"], fetched["id"])
+
+        status, _, _ = self.request(f"/api/email/mock/inboxes/{inbox_id}/failure", "POST", {"mode": "rate_limit"})
+        self.assertEqual(200, status)
+        status, error, _ = self.request(f"/api/email/mock/inboxes/{inbox_id}/poll", "POST", {"timeout_seconds": 0})
+        self.assertEqual(429, status)
+        self.assertEqual("EMAIL_RATE_LIMITED", error["code"])
+        status, deleted, _ = self.request(f"/api/email/mock/inboxes/{inbox_id}", "DELETE")
+        self.assertEqual(200, status)
+        self.assertEqual("deleted", deleted["status"])
+        status, _, _ = self.request(f"/api/email/mock/inboxes/{inbox_id}")
+        self.assertEqual(404, status)
+
+    def test_mock_email_expiry_and_ambiguity_are_explicit(self):
+        _, expired, _ = self.request("/api/email/mock/inboxes", "POST", {"ttl_seconds": 0})
+        _, result, _ = self.request(f"/api/email/mock/inboxes/{expired['id']}/poll", "POST", {"timeout_seconds": 60})
+        self.assertEqual("expired", result["status"])
+        _, inbox, _ = self.request("/api/email/mock/inboxes", "POST", {})
+        for code in ("111111", "222222"):
+            self.request(
+                f"/api/email/mock/inboxes/{inbox['id']}/messages",
+                "POST",
+                {"sender": "verification@example.test", "subject": "Test", "text": f"Verification code is {code}"},
+            )
+        _, result, _ = self.request(f"/api/email/mock/inboxes/{inbox['id']}/poll", "POST", {"timeout_seconds": 0})
+        self.assertEqual("ambiguous", result["status"])
+        self.assertIsNone(result["code"])
+
     def test_errors_do_not_leak_internals(self):
         status, error, _ = self.request("/api/conversations/missing")
         self.assertEqual(404, status)

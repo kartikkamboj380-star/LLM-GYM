@@ -15,7 +15,7 @@ from .chat import ChatService
 from .config import Settings
 from .database import Database
 from .designarena import DesignArenaClient
-from .email import MockEmailProvider, VerificationCodeParser
+from .email import EmailProviderRateLimit, MockEmailProvider, OTPRules, VerificationCodeParser
 from .errors import APIError
 from .exporters import conversation_markdown
 from .memory import MemoryExtractor, MemoryStore
@@ -97,6 +97,28 @@ class RequestHandler(BaseHTTPRequestHandler):
             raise ValueError(f"{name} must be a number")
         return float(value)
 
+    @staticmethod
+    def _otp_rules(data: dict) -> OTPRules:
+        raw = data.get("rules", {})
+        if not isinstance(raw, dict):
+            raise ValueError("rules must be an object")
+        allowed = {"expected_length", "allowed_characters", "sender", "subject", "max_age_seconds", "expected_application", "expected_test_run"}
+        unknown = set(raw) - allowed
+        if unknown:
+            raise ValueError(f"Unknown OTP rule: {sorted(unknown)[0]}")
+        values = {}
+        for name in ("expected_length", "max_age_seconds"):
+            if name in raw:
+                if isinstance(raw[name], bool) or not isinstance(raw[name], int):
+                    raise ValueError(f"{name} must be an integer")
+                values[name] = raw[name]
+        for name in ("allowed_characters", "sender", "subject", "expected_application", "expected_test_run"):
+            if name in raw:
+                if not isinstance(raw[name], str):
+                    raise ValueError(f"{name} must be a string")
+                values[name] = raw[name]
+        return OTPRules(**values)
+
     def _rate_limit(self, bucket: str, limit: int) -> None:
         self.app.rate_limiter.enforce(
             bucket,
@@ -144,6 +166,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         except (ValueError, TypeError) as exc:
             error = APIError(400, "VALIDATION_ERROR", str(exc))
             self._json(error.status, error.payload(self.request_id))
+        except EmailProviderRateLimit as exc:
+            error = APIError(429, "EMAIL_RATE_LIMITED", str(exc), retryable=True, retry_after=exc.retry_after)
+            self._json(error.status, error.payload(self.request_id), {"Retry-After": str(exc.retry_after)})
         except ProviderError as exc:
             error = APIError(502, "PROVIDER_ERROR", str(exc), retryable=True)
             self._json(error.status, error.payload(self.request_id))
@@ -276,9 +301,34 @@ class RequestHandler(BaseHTTPRequestHandler):
                 raise KeyError("Memory not found")
             self._json(200, {"deleted": True})
             return
+        if method == "GET" and path == "/api/email/mock/capabilities":
+            self._json(200, self.app.email.capabilities())
+            return
+        if method == "GET" and path == "/api/email/mock/health":
+            self._json(200, self.app.email.health())
+            return
         if method == "POST" and path == "/api/email/mock/inboxes":
             self._rate_limit("email inbox creation", self.app.settings.email_rate_limit)
-            self._json(201, self.app.email.create_inbox().to_dict())
+            data = self._read_json()
+            ttl = data.get("ttl_seconds", 900)
+            if isinstance(ttl, bool) or not isinstance(ttl, int):
+                raise ValueError("ttl_seconds must be an integer")
+            local_part = data.get("local_part")
+            if local_part is not None and not isinstance(local_part, str):
+                raise ValueError("local_part must be a string")
+            self._json(201, self.app.email.create_inbox(ttl, local_part).to_dict())
+            return
+        match = re.fullmatch(r"/api/email/mock/inboxes/([^/]+)", path)
+        if match and method in {"GET", "DELETE"}:
+            inbox_id = match.group(1)
+            if method == "GET":
+                self._json(200, self.app.email.get_inbox(inbox_id).to_dict())
+            else:
+                self._json(200, self.app.email.delete_inbox(inbox_id).to_dict())
+            return
+        match = re.fullmatch(r"/api/email/mock/inboxes/([^/]+)/messages/([^/]+)", path)
+        if method == "GET" and match:
+            self._json(200, self.app.email.get_message(match.group(1), match.group(2)).to_dict())
             return
         match = re.fullmatch(r"/api/email/mock/inboxes/([^/]+)/messages", path)
         if match:
@@ -288,11 +338,19 @@ class RequestHandler(BaseHTTPRequestHandler):
                 return
             if method == "POST":
                 data = self._read_json()
+                html = data.get("html")
+                if html is not None and not isinstance(html, str):
+                    raise ValueError("html must be a string")
+                ttl = data.get("ttl_seconds", 600)
+                if isinstance(ttl, bool) or not isinstance(ttl, int):
+                    raise ValueError("ttl_seconds must be an integer")
                 message = self.app.email.send_message(
                     inbox_id,
                     self._string(data, "sender", "tests@example.test"),
                     self._string(data, "subject", ""),
                     self._string(data, "text", ""),
+                    html=html,
+                    ttl_seconds=ttl,
                 )
                 self._json(201, message.to_dict())
                 return
@@ -300,8 +358,23 @@ class RequestHandler(BaseHTTPRequestHandler):
         if method == "POST" and match:
             data = self._read_json()
             self._rate_limit("email demo delivery", self.app.settings.email_rate_limit)
-            message = self.app.email.send_demo_verification(match.group(1), self._string(data, "code_type", "numeric"))
+            html = data.get("html", False)
+            if not isinstance(html, bool):
+                raise ValueError("html must be a boolean")
+            message = self.app.email.send_demo_verification(
+                match.group(1), self._string(data, "code_type", "numeric"), html=html
+            )
             self._json(201, message.to_dict())
+            return
+        match = re.fullmatch(r"/api/email/mock/inboxes/([^/]+)/failure", path)
+        if method == "POST" and match:
+            data = self._read_json()
+            self._json(200, self.app.email.set_failure_mode(match.group(1), self._string(data, "mode")))
+            return
+        match = re.fullmatch(r"/api/email/mock/inboxes/([^/]+)/cancel", path)
+        if method == "POST" and match:
+            cancelled = self.app.email.cancel_poll(match.group(1))
+            self._json(200, {"cancelled": cancelled})
             return
         match = re.fullmatch(r"/api/email/mock/inboxes/([^/]+)/poll", path)
         if method == "POST" and match:
@@ -311,6 +384,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 match.group(1),
                 timeout_seconds=self._number(data, "timeout_seconds", 0),
                 interval_seconds=self._number(data, "interval_seconds", 1),
+                backoff_multiplier=self._number(data, "backoff_multiplier", 1),
+                rules=self._otp_rules(data),
             )
             self._json(200, result)
             return

@@ -17,7 +17,8 @@ A local-first, Android-friendly AI learning lab with persistent chat memory, mod
 | Versioned, data-preserving SQLite migrations | Working locally | No |
 | Search and relevant-memory injection into new chats | Working locally | No |
 | Explicit fact extraction from your own conversations | Working locally | No |
-| Numeric and mixed alphanumeric mock verification | Working locally | No |
+| Numeric/alphanumeric text/HTML verification, filtering, ambiguity and expiry handling | Working locally | No |
+| Mock inbox lifecycle, cancellation, failure simulation, sanitized reports | Working locally | No |
 | GPT, Claude, Gemini, OpenAI-compatible adapters | Implemented; HTTP formats unit-tested | Yes, external API |
 | Dataset evaluation, comparison, Markdown/JSON reports | Working locally | Only for external providers |
 | Design Arena read-only leaderboard client | Implemented against official docs | Approved API key |
@@ -200,7 +201,7 @@ data/                         Ignored runtime DB/reports
 
 All core runtime functionality uses Python's standard library. SQLite is included with Python; there is no vector database, embedding service, Docker image, frontend build, or large framework. Retrieval uses bounded local lexical ranking over up to 1,000 recent memories. That is appropriate for this lightweight milestone, not unlimited enterprise-scale semantic search.
 
-More detail: [architecture and phased plan](docs/ARCHITECTURE.md) · [repository audit](docs/PROJECT_AUDIT.md) · [API conventions](docs/API.md) · [security](docs/security.md) · [deployment](docs/deployment.md).
+More detail: [architecture and phased plan](docs/ARCHITECTURE.md) · [repository audit](docs/PROJECT_AUDIT.md) · [API conventions](docs/API.md) · [email/OTP lab](docs/EMAIL.md) · [security](docs/security.md) · [deployment](docs/deployment.md).
 
 ## API summary
 

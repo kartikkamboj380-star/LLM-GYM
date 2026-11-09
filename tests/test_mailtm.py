@@ -42,6 +42,28 @@ class MailTmAdapterTests(unittest.TestCase):
         self.assertEqual("sender@example.test", messages[0].sender)
         self.assertEqual("Bearer private-token", request.call_args_list[0].kwargs["headers"]["Authorization"])
 
+    @patch("app.email.mailtm.request_json")
+    def test_inbox_info_health_and_documented_delete(self, request):
+        request.side_effect = [
+            {"hydra:member": [{"domain": "mail.test"}]},
+            {"id": "remote-account"},
+            {"token": "private-token"},
+            {"hydra:member": [{"domain": "mail.test"}]},
+            {"address": "llm-gym-test@mail.test", "createdAt": "2026-01-01T00:00:00Z"},
+            {},
+        ]
+        provider = MailTmProvider()
+        inbox = provider.create_inbox()
+        self.assertEqual(8, provider.capabilities()["documented_general_quota_qps"])
+        self.assertTrue(provider.health()["external"])
+        self.assertEqual("active", provider.get_inbox(inbox.id).status)
+        deleted = provider.delete_inbox(inbox.id)
+        self.assertEqual("deleted", deleted.status)
+        delete_call = request.call_args_list[-1]
+        self.assertEqual("DELETE", delete_call.args[0])
+        self.assertTrue(delete_call.args[1].endswith("/accounts/remote-account"))
+        self.assertNotIn("private-token", str(deleted.to_dict()))
+
     def test_unknown_local_inbox_does_not_make_network_request(self):
         with patch("app.email.mailtm.request_json") as request:
             with self.assertRaises(KeyError):
