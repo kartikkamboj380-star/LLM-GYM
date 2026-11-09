@@ -232,3 +232,17 @@ Each phase requires a focused commit, regression suite, honest completion note, 
 - **Actual fine-tuning?** Not in current scope; requires a supported provider operation and separate verification.
 - **Hosted PostgreSQL?** Not needed locally. Re-evaluate only with a concrete multi-user/hosting target.
 - **Streaming?** Optional, only after normal provider/error behavior is hardened; never advertise unsupported streaming.
+
+## 13. Phase 6 implementation status — 2026-11-09
+
+The phase plan above remains the ordered roadmap. Phase 6 has now been implemented locally as follows:
+
+- `AIProvider` retains `generate()` and adds opt-in `capabilities()` / `test_connection()` methods. Capabilities honestly report `streaming: false`; no SSE or incremental persistence path was added.
+- `app/providers/factory.py` exposes a non-secret catalog with configured booleans, models, capability flags, and connection status. `app/providers/_http.py` categorizes upstream HTTP/network failures, carries retry metadata, and redacts known environment secrets.
+- OpenAI-compatible, Anthropic, and Gemini adapters perform documented model `GET` connection tests; the mock performs a local check. None of those tests generate chat. External calls require explicit API/UI confirmation.
+- `app/api.py` adds `POST /api/providers/test`, confirmation enforcement, categorized error responses, per-client rate limiting, persisted test results, and validated provider selection for conversation create/update/chat. There is no silent fallback to mock.
+- Migration 2 adds persistent provider/model/usage/finish/truncation/bounded-context metadata and connection-test history. `ChatService` returns exact history/retrieval counts and flags omitted earlier history; assistant messages and exports retain safe metadata.
+- The vanilla frontend adds a real Providers view, persistent model selection, connection-test controls, response metadata chips, and a bounded-context status line. JavaScript syntax and HTTP contracts are verified; a dedicated real-browser Providers flow is not yet present.
+- Local verification: 98 offline tests passed, plus Python compilation and both JavaScript syntax checks. All external HTTP was mocked; no live provider verification is claimed.
+
+Streaming remains the only Phase 6 task not implemented, intentionally reported as unsupported. Phases 7–11 remain outstanding, so the overall product status is still **partially implemented**, not “complete and verified.” See `PROVIDERS.md` for the exact contracts and verification boundary.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import quote
 
 from ._http import request_json
 from .base import AIProvider, ChatResponse, Message, ProviderError
@@ -14,9 +15,18 @@ class AnthropicProvider(AIProvider):
     def __init__(self, model: str, timeout: float = 30):
         self.api_key = os.getenv("ANTHROPIC_API_KEY", "")
         if not self.api_key:
-            raise ProviderError("anthropic requires ANTHROPIC_API_KEY in the server environment")
+            raise ProviderError("anthropic requires ANTHROPIC_API_KEY in the server environment", category="missing_key")
         self.model = model
         self.timeout = timeout
+
+    def test_connection(self) -> dict:
+        result = request_json(
+            "GET",
+            f"https://api.anthropic.com/v1/models/{quote(self.model, safe='')}",
+            headers={"x-api-key": self.api_key, "anthropic-version": "2023-06-01"},
+            timeout=self.timeout,
+        )
+        return {"status": "verified", "provider": self.name, "model": str(result.get("id", self.model)), "external": True, "operation": "model-get"}
 
     def generate(self, messages: list[Message], system_prompt: str | None = None) -> ChatResponse:
         payload: dict = {
@@ -41,4 +51,11 @@ class AnthropicProvider(AIProvider):
             raise ProviderError("Anthropic response did not contain text content") from exc
         if not content:
             raise ProviderError("Anthropic returned an empty response")
-        return ChatResponse(content, str(result.get("model", self.model)), result.get("usage", {}))
+        finish_reason = result.get("stop_reason")
+        return ChatResponse(
+            content,
+            str(result.get("model", self.model)),
+            result.get("usage", {}),
+            truncated=finish_reason == "max_tokens",
+            finish_reason=finish_reason,
+        )

@@ -150,3 +150,17 @@ Preserve existing files and APIs while incrementally adding:
 ## 9. Audit conclusion
 
 The repository has a useful, tested foundation, not a superficial demo. It is **partially implemented relative to the master prompt**. The core chat/memory/mock-email milestone is reusable and healthy. The largest missing product areas are prompt/dataset management, full evaluation persistence/UI, local browser E2E, lifecycle/security controls, and dashboard/settings surfaces. External-provider functionality remains implemented-but-not-live-verified.
+
+## 10. Phase 6 implementation addendum — 2026-11-09
+
+Sections 3–6 describe the **dated baseline**. The following changes supersede only the baseline rows for provider errors, provider capabilities, frontend provider controls, schema metadata, and connection testing; the original audit is retained as history.
+
+- Schema migration 2 adds conversation provider/model, message model/token/output-truncation/finish/context metadata, and persistent connection-test history. Legacy-data preservation and transactional rollback remain covered by tests.
+- Adapters expose capabilities and explicit non-generation connection tests: a local mock check and documented model `GET` requests for OpenAI-compatible, Anthropic, and Gemini. External tests require confirmation; no chat payload is sent.
+- Provider errors are categorized, bounded, redacted, and mapped to stable API codes with retry guidance. Catalog responses never contain secret values. Unconfigured providers fail before a partial turn and never silently fall back to the mock.
+- The API accepts and validates provider selection for conversation creation, conversation updates, and individual chat turns. Chat responses and persisted messages report normalized usage where available, finish reason, output truncation, bounded history, earlier-history omission, and retrieved-memory count. Markdown/JSON exports retain safe metadata.
+- A functional Providers view shows real catalog/capability/test status; chat shows response metadata and context status. JavaScript syntax and HTTP integration checks pass. A dedicated real-browser Providers flow has not been added.
+- Streaming remains unsupported end to end and is reported as `streaming: false`; no SSE endpoint, incremental UI, or partial-response persistence exists.
+- Local verification: **98/98 offline tests**, Python compilation, and both JavaScript syntax checks passed. All external provider HTTP was mocked; **no live GPT, Claude, Gemini, or custom provider was contacted**.
+
+The product remains **partially implemented relative to the master prompt**. Phase 6's local acceptance criteria are implemented and tested, except the optional streaming task, which is explicitly withheld rather than faked. Later phases still require prompt/dataset/evaluation persistence, memory controls, a security review, deployment readiness, and final QA.

@@ -23,7 +23,8 @@
     <button class="nav-item" id="tab-chat" data-view="chat" role="tab" aria-selected="false" aria-controls="view-chat"><span aria-hidden="true">02</span> Chat</button>
     <button class="nav-item" id="tab-memory" data-view="memory" role="tab" aria-selected="false" aria-controls="view-memory"><span aria-hidden="true">03</span> Memory</button>
     <button class="nav-item" id="tab-inbox" data-view="inbox" role="tab" aria-selected="false" aria-controls="view-inbox"><span aria-hidden="true">04</span> Test inbox</button>
-    <button class="nav-item" id="tab-arena" data-view="arena" role="tab" aria-selected="false" aria-controls="view-arena"><span aria-hidden="true">05</span> Arena API</button>
+    <button class="nav-item" id="tab-providers" data-view="providers" role="tab" aria-selected="false" aria-controls="view-providers"><span aria-hidden="true">05</span> Providers</button>
+    <button class="nav-item" id="tab-arena" data-view="arena" role="tab" aria-selected="false" aria-controls="view-arena"><span aria-hidden="true">06</span> Arena API</button>
   </nav>
 
   <main>
@@ -49,7 +50,7 @@
         </aside>
         <section class="chat-panel" aria-label="Active conversation">
           <div class="chat-heading">
-            <div><p class="eyebrow">Persistent session</p><h1 id="conversation-title">New conversation</h1></div>
+            <div><p class="eyebrow">Persistent session</p><h1 id="conversation-title">New conversation</h1><p id="conversation-model" class="field-note">Model: loading…</p></div>
             <div class="chat-actions"><button id="rename-chat" class="button secondary compact">Rename</button><button id="export-chat" class="button secondary compact">Export</button><button id="extract-memory" class="button secondary compact" title="Extract explicit facts from this conversation">Extract facts</button><button id="delete-chat" class="button danger compact">Delete</button></div>
           </div>
           <div id="messages" class="messages" aria-live="polite" aria-busy="false">
@@ -65,6 +66,7 @@
               <button id="send-message" class="button primary" type="submit">Send <span aria-hidden="true">↗</span></button>
             </div>
             <p id="provider-note" class="field-note">The mock runs offline and makes no external request.</p>
+            <p id="chat-context" class="field-note">Context: bounded recent history and retrieved memories · streaming off.</p>
           </form>
         </section>
       </div>
@@ -125,6 +127,12 @@
         </section>
       </div>
       <p class="safety-note">Real providers such as mail.tm are optional and may block OTP delivery. Never use temporary inboxes to bypass service limits or create unauthorized accounts.</p>
+    </section>
+
+    <section id="view-providers" class="view" role="tabpanel" aria-labelledby="tab-providers" hidden>
+      <div class="section-header"><div><p class="eyebrow">Configuration and connectivity</p><h1>Connections you can verify.</h1><p>Connection tests inspect the selected model with a documented GET request. They do not generate text. Streaming is not implemented; responses are saved only after completion.</p></div><span class="pill">Keys stay server-side</span></div>
+      <div id="provider-grid" class="provider-grid" aria-live="polite"></div>
+      <p class="safety-note">Configured means a server environment variable is present—not that the key, account, model, quota, or external network has been verified. External tests require confirmation and may be subject to provider limits.</p>
     </section>
 
     <section id="view-arena" class="view" role="tabpanel" aria-labelledby="tab-arena" hidden>

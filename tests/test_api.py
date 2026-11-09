@@ -49,7 +49,7 @@ class APIIntegrationTests(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual("ok", health["status"])
         self.assertTrue(health["database"])
-        self.assertEqual(1, health["schema_version"])
+        self.assertEqual(2, health["schema_version"])
         self.assertEqual("0.1.0", health["version"])
         self.assertTrue(health["providers"]["mock"])
         self.assertFalse(health["providers"]["openai"])
@@ -87,6 +87,85 @@ class APIIntegrationTests(unittest.TestCase):
         self.assertEqual(1, len(second_chat["retrieved_memories"]))
         status, loaded, _ = self.request(f"/api/conversations/{conversation_id}")
         self.assertEqual(4, len(loaded["messages"]))
+        assistant = loaded["messages"][-1]
+        self.assertEqual("mock-1", assistant["model"])
+        self.assertIn("input_tokens", assistant)
+        self.assertFalse(assistant["truncated"])
+        self.assertFalse(second_chat["streaming"])
+
+    def test_provider_catalog_local_test_and_external_confirmation(self):
+        status, catalog, _ = self.request("/api/providers")
+        self.assertEqual(200, status)
+        self.assertFalse(catalog["streaming"])
+        self.assertEqual(5, len(catalog["providers"]))
+        status, result, _ = self.request("/api/providers/test", "POST", {"provider": "mock"})
+        self.assertEqual(200, status)
+        self.assertEqual("verified", result["status"])
+        self.assertFalse(result["external"])
+        status, catalog, _ = self.request("/api/providers")
+        mock = next(item for item in catalog["providers"] if item["id"] == "mock")
+        self.assertEqual("verified", mock["connection_status"])
+        self.assertIn("tested_at", mock["last_test"])
+
+        status, error, _ = self.request("/api/providers/test", "POST", {"provider": "openai"})
+        self.assertEqual(409, status)
+        self.assertEqual("EXTERNAL_CONFIRMATION_REQUIRED", error["code"])
+        status, error, _ = self.request(
+            "/api/providers/test", "POST", {"provider": "openai", "confirm_external": True}
+        )
+        self.assertEqual(400, status)
+        self.assertEqual("PROVIDER_MISSING_KEY", error["code"])
+        self.assertNotIn("api_key", str(error).lower())
+
+    def test_external_provider_test_is_non_generation_and_persistent(self):
+        from unittest.mock import patch
+
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "server-secret-do-not-return"}, clear=True), patch(
+            "app.providers.openai_compatible.request_json", return_value={"id": "gpt-test"}
+        ) as upstream:
+            status, result, _ = self.request(
+                "/api/providers/test", "POST", {"provider": "openai", "confirm_external": True}
+            )
+        self.assertEqual(200, status)
+        self.assertTrue(result["external"])
+        self.assertEqual("model-get", result["operation"])
+        self.assertNotIn("server-secret", str(result))
+        self.assertEqual("GET", upstream.call_args.args[0])
+        self.assertNotIn("payload", upstream.call_args.kwargs)
+        _, catalog, _ = self.request("/api/providers")
+        openai = next(item for item in catalog["providers"] if item["id"] == "openai")
+        self.assertEqual("verified", openai["last_test"]["status"])
+
+    def test_conversation_provider_selection_and_response_metadata(self):
+        status, conversation, _ = self.request("/api/conversations", "POST", {"provider": "MOCK"})
+        self.assertEqual(201, status)
+        self.assertEqual("mock", conversation["provider"])
+        self.assertEqual("mock-1", conversation["model"])
+        conversation_id = conversation["id"]
+
+        status, error, _ = self.request(
+            f"/api/conversations/{conversation_id}", "PATCH", {"provider": "openai"}
+        )
+        self.assertEqual(400, status)
+        self.assertEqual("PROVIDER_MISSING_CONFIGURATION", error["code"])
+
+        status, chat, _ = self.request(
+            f"/api/conversations/{conversation_id}/messages", "POST", {"content": "Hello"}
+        )
+        self.assertEqual(200, status)
+        self.assertFalse(chat["streaming"])
+        self.assertEqual(1, chat["context"]["history_messages"])
+        self.assertFalse(chat["context"]["history_truncated"])
+        self.assertEqual(1, chat["assistant_message"]["context_messages"])
+        _, loaded, _ = self.request(f"/api/conversations/{conversation_id}")
+        assistant = loaded["messages"][-1]
+        self.assertEqual("mock-1", assistant["model"])
+        self.assertFalse(assistant["truncated"])
+        self.assertFalse(assistant["context_truncated"])
+        self.assertEqual(0, assistant["retrieved_memory_count"])
+        _, markdown, _ = self.request(f"/api/conversations/{conversation_id}/export?format=markdown")
+        self.assertIn("Configured model: mock-1", markdown)
+        self.assertIn("Context: 1 message", markdown)
 
     def test_dashboard_rename_export_and_delete_conversation(self):
         _, conversation, _ = self.request("/api/conversations", "POST", {"title": "Before"})

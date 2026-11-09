@@ -3,7 +3,7 @@
 ## Secrets
 
 - `.env`, database files, key files, runtime reports, and JSONL logs are Git-ignored.
-- Provider keys are read by backend adapters only. `/api/providers` returns booleans, not credentials.
+- Provider keys are read by backend adapters only. `/api/providers` returns non-secret booleans, model names, capabilities, and safe test status—not credentials.
 - Custom OpenAI-compatible remote endpoints require HTTPS.
 - Gemini's key is sent in the `x-goog-api-key` header, not a URL query parameter.
 - Browser automation does not log fill values; use `${ENV_VAR}` placeholders in flow JSON.
@@ -16,6 +16,12 @@ GitHub Secrets are appropriate for explicitly authorized CI calls, not a substit
 This is a single-user development application without login, CSRF tokens, per-user authorization, or tenant isolation. Configurable in-memory rate limits bound chat and sensitive email operations per client/bucket, but they reset on restart and are not a public-security boundary. Same-origin responses and a restrictive content security policy reduce exposure, but they do not make the app safe as a public multi-user service. Keep the default `127.0.0.1` binding. Using `0.0.0.0` is for a trusted preview/LAN only.
 
 Do not store sensitive personal information or credentials in memories. The extractor rejects common credential phrases, but that heuristic is not a guarantee. Manual memory creation accepts any non-empty text by design.
+
+## External provider tests
+
+Connection tests are explicit, separate from health checks, and never generate chat. External tests require `confirm_external: true`; the UI asks for confirmation first. They use documented model-inspection `GET` requests, remain subject to provider authentication, quota, billing, and terms, and are bounded by a local per-client rate limit. A custom OpenAI-compatible endpoint must be one you are authorized to use; remote URLs require HTTPS except loopback.
+
+Provider error bodies are bounded and known environment secrets are redacted. Connection-test history stores provider/model/status/category/timestamp, not keys or raw response bodies. A missing external key fails with a categorized error rather than silently falling back to the offline mock. Streaming is not implemented, so no partial generation or in-flight cancellation path exists. Live provider verification requires owner credentials and a separately recorded result; mocked contract tests do not prove live connectivity.
 
 ## Third-party authorization
 

@@ -18,12 +18,22 @@ class MigrationTests(unittest.TestCase):
 
     def test_new_database_is_versioned_and_initialization_is_idempotent(self):
         database = Database(self.path)
-        self.assertEqual(1, database.schema_version())
+        self.assertEqual(MIGRATIONS[-1].version, database.schema_version())
         self.assertTrue(database.healthcheck())
         Database(self.path)
         with database.connect() as connection:
             versions = connection.execute("SELECT version FROM schema_migrations").fetchall()
-        self.assertEqual([1], [row[0] for row in versions])
+        self.assertEqual([migration.version for migration in MIGRATIONS], [row[0] for row in versions])
+        with database.connect() as connection:
+            message_columns = {row[1] for row in connection.execute("PRAGMA table_info(messages)")}
+            conversation_columns = {row[1] for row in connection.execute("PRAGMA table_info(conversations)")}
+            history_table = connection.execute("SELECT 1 FROM sqlite_master WHERE name = 'connection_tests'").fetchone()
+        self.assertTrue({
+            "model", "input_tokens", "output_tokens", "truncated", "finish_reason",
+            "context_messages", "context_truncated", "retrieved_memory_count",
+        } <= message_columns)
+        self.assertTrue({"provider", "model"} <= conversation_columns)
+        self.assertIsNotNone(history_table)
 
     def test_complete_legacy_database_is_baselines_without_data_loss(self):
         with sqlite3.connect(self.path) as connection:
@@ -35,7 +45,7 @@ class MigrationTests(unittest.TestCase):
                 "INSERT INTO memories(id, content, tags, created_at, updated_at) VALUES ('fact', 'Keep me', '[]', '2026-01-01', '2026-01-01')"
             )
         database = Database(self.path)
-        self.assertEqual(1, database.schema_version())
+        self.assertEqual(MIGRATIONS[-1].version, database.schema_version())
         with database.connect() as connection:
             title = connection.execute("SELECT title FROM conversations WHERE id = 'legacy'").fetchone()[0]
             content = connection.execute("SELECT content FROM memories WHERE id = 'fact'").fetchone()[0]
@@ -53,7 +63,7 @@ class MigrationTests(unittest.TestCase):
     def test_failed_migration_rolls_back_all_of_its_statements(self):
         database = Database(self.path)
         broken = Migration(
-            2,
+            MIGRATIONS[-1].version + 1,
             "deliberate test failure",
             ("CREATE TABLE migration_probe(id INTEGER)", "INSERT INTO missing_table VALUES (1)"),
         )
@@ -65,7 +75,7 @@ class MigrationTests(unittest.TestCase):
                 "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'migration_probe'"
             ).fetchone()
         self.assertIsNone(probe)
-        self.assertEqual(1, database.schema_version())
+        self.assertEqual(MIGRATIONS[-1].version, database.schema_version())
 
 
 if __name__ == "__main__":

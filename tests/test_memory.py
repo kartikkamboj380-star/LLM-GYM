@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from dataclasses import replace
 
 from app.chat import ChatService
 from app.database import Database
@@ -107,6 +108,28 @@ class ChatServiceTests(unittest.TestCase):
         self.assertIn("Python", result["assistant_message"]["content"])
         self.assertEqual(1, len(result["retrieved_memories"]))
         self.assertEqual(2, len(self.store.get_conversation(conversation["id"])["messages"]))
+
+    def test_chat_reports_and_persists_bounded_context_metadata(self):
+        settings = replace(self.settings, history_limit=2, retrieval_limit=1)
+        chat = ChatService(self.store, settings)
+        conversation = self.store.create_conversation()
+        self.store.add_memory("My favorite language is Python")
+        for index in range(3):
+            self.store.add_message(conversation["id"], "user", f"Earlier message {index}")
+
+        result = chat.send(conversation["id"], "What is my favorite language?")
+        context = result["context"]
+        self.assertEqual(2, context["history_limit"])
+        self.assertEqual(2, context["history_messages"])
+        self.assertTrue(context["history_truncated"])
+        self.assertEqual(1, context["retrieved_memories"])
+        assistant = result["assistant_message"]
+        self.assertEqual(2, assistant["context_messages"])
+        self.assertTrue(assistant["context_truncated"])
+        self.assertEqual(1, assistant["retrieved_memory_count"])
+        stored = self.store.get_conversation(conversation["id"])["messages"][-1]
+        self.assertTrue(stored["context_truncated"])
+        self.assertEqual(2, stored["context_messages"])
 
     def test_missing_conversation_is_not_created_implicitly(self):
         with self.assertRaises(KeyError):

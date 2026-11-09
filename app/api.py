@@ -21,7 +21,7 @@ from .errors import APIError
 from .exporters import conversation_markdown
 from .memory import MemoryExtractor, MemoryStore
 from .rate_limit import InMemoryRateLimiter
-from .providers import available_providers
+from .providers import available_providers, create_provider
 from .providers.base import ProviderError
 
 
@@ -121,6 +121,30 @@ class RequestHandler(BaseHTTPRequestHandler):
                 values[name] = raw[name]
         return OTPRules(**values)
 
+    def _providers(self) -> list[dict]:
+        providers = available_providers(self.app.settings)
+        latest = self.app.store.latest_connection_tests()
+        for provider in providers:
+            test = latest.get(provider["id"])
+            if test:
+                provider["connection_status"] = test["status"]
+                provider["last_test"] = test
+        return providers
+
+    def _provider_metadata(self, name: str, *, require_configured: bool = False) -> dict:
+        if not isinstance(name, str):
+            raise ValueError("Provider must be a string")
+        normalized = name.strip().lower()
+        metadata = next((item for item in available_providers(self.app.settings) if item["id"] == normalized), None)
+        if metadata is None:
+            raise ProviderError(f"Unknown provider: {normalized}", category="unsupported_operation")
+        if require_configured and not metadata["configured"]:
+            raise ProviderError(
+                f"{metadata['label']} is not configured in the server environment",
+                category="missing_configuration",
+            )
+        return metadata
+
     def _rate_limit(self, bucket: str, limit: int) -> None:
         self.app.rate_limiter.enforce(
             bucket,
@@ -172,8 +196,17 @@ class RequestHandler(BaseHTTPRequestHandler):
             error = APIError(429, "EMAIL_RATE_LIMITED", str(exc), retryable=True, retry_after=exc.retry_after)
             self._json(error.status, error.payload(self.request_id), {"Retry-After": str(exc.retry_after)})
         except ProviderError as exc:
-            error = APIError(502, "PROVIDER_ERROR", str(exc), retryable=True)
-            self._json(error.status, error.payload(self.request_id))
+            local_error = exc.category in {"missing_key", "missing_configuration", "unsupported_operation", "invalid_request"}
+            status = 429 if exc.category == "rate_limit" else (400 if local_error else 502)
+            error = APIError(
+                status,
+                f"PROVIDER_{exc.category.upper()}",
+                str(exc),
+                retryable=exc.retryable,
+                retry_after=exc.retry_after,
+            )
+            headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None
+            self._json(error.status, error.payload(self.request_id), headers)
         except (BrokenPipeError, ConnectionResetError):
             return
         except Exception:
@@ -207,10 +240,37 @@ class RequestHandler(BaseHTTPRequestHandler):
             })
             return
         if method == "GET" and path == "/api/providers":
-            self._json(200, {"default": self.app.settings.default_provider, "providers": available_providers(self.app.settings)})
+            self._json(200, {
+                "default": self.app.settings.default_provider,
+                "streaming": False,
+                "providers": self._providers(),
+            })
+            return
+        if method == "POST" and path == "/api/providers/test":
+            self._rate_limit("provider connection test", self.app.settings.email_rate_limit)
+            data = self._read_json()
+            metadata = self._provider_metadata(self._string(data, "provider"))
+            provider_name = metadata["id"]
+            confirmed = data.get("confirm_external", False)
+            if not isinstance(confirmed, bool):
+                raise ValueError("confirm_external must be a boolean")
+            if metadata["external"] and not confirmed:
+                raise APIError(
+                    409,
+                    "EXTERNAL_CONFIRMATION_REQUIRED",
+                    "Confirm that this documented model-inspection request may contact the external provider. No chat generation will occur.",
+                )
+            try:
+                result = create_provider(provider_name, self.app.settings).test_connection()
+            except ProviderError as exc:
+                status = "configuration_required" if exc.category in {"missing_key", "missing_configuration"} else "failed"
+                self.app.store.record_connection_test(provider_name, metadata["model"], status, exc.category, metadata["external"])
+                raise
+            self.app.store.record_connection_test(provider_name, result["model"], "verified", "local" if not metadata["external"] else "model-get", metadata["external"])
+            self._json(200, result)
             return
         if method == "GET" and path == "/api/dashboard":
-            providers = available_providers(self.app.settings)
+            providers = self._providers()
             self._json(200, {
                 "application": {"status": "ok", "version": "0.1.0"},
                 "database": {"status": "ok" if self.app.database.healthcheck() else "error", "schema_version": self.app.database.schema_version()},
@@ -228,7 +288,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
         if method == "POST" and path == "/api/conversations":
             data = self._read_json()
-            conversation = self.app.store.create_conversation(self._string(data, "title", "New conversation"))
+            metadata = self._provider_metadata(
+                data.get("provider", self.app.settings.default_provider), require_configured=True
+            )
+            conversation = self.app.store.create_conversation(
+                self._string(data, "title", "New conversation"), metadata["id"], metadata["model"]
+            )
             self._json(201, conversation)
             return
         match = re.fullmatch(r"/api/conversations/([^/]+)/export", path)
@@ -255,7 +320,19 @@ class RequestHandler(BaseHTTPRequestHandler):
             conversation_id = match.group(1)
             if method == "PATCH":
                 data = self._read_json()
-                self._json(200, self.app.store.rename_conversation(conversation_id, self._string(data, "title")))
+                if "title" not in data and "provider" not in data:
+                    raise ValueError("PATCH requires title or provider")
+                if self.app.store.get_conversation(conversation_id) is None:
+                    raise KeyError("Conversation not found")
+                result = None
+                if "title" in data:
+                    result = self.app.store.rename_conversation(conversation_id, self._string(data, "title"))
+                if "provider" in data:
+                    metadata = self._provider_metadata(self._string(data, "provider"), require_configured=True)
+                    result = self.app.store.set_conversation_provider(
+                        conversation_id, metadata["id"], metadata["model"]
+                    )
+                self._json(200, result)
                 return
             if method == "DELETE":
                 if not self.app.store.delete_conversation(conversation_id):
@@ -271,10 +348,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         if method == "POST" and match:
             data = self._read_json()
             self._rate_limit("chat", self.app.settings.chat_rate_limit)
-            provider = data.get("provider")
-            if provider is not None and not isinstance(provider, str):
-                raise ValueError("Provider must be a string")
-            result = self.app.chat.send(match.group(1), self._string(data, "content"), provider)
+            metadata = self._provider_metadata(
+                data.get("provider", self.app.settings.default_provider), require_configured=True
+            )
+            result = self.app.chat.send(match.group(1), self._string(data, "content"), metadata["id"])
             self._json(200, result)
             return
         if method == "GET" and path == "/api/memory":

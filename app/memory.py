@@ -39,16 +39,16 @@ class MemoryStore:
     def __init__(self, database: Database):
         self.database = database
 
-    def create_conversation(self, title: str = "New conversation") -> dict:
+    def create_conversation(self, title: str = "New conversation", provider: str = "mock", model: str = "mock-1") -> dict:
         clean_title = title.strip()[:200] or "New conversation"
         conversation_id = str(uuid.uuid4())
         now = utc_now()
         with self.database.connect() as connection:
             connection.execute(
-                "INSERT INTO conversations(id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                (conversation_id, clean_title, now, now),
+                "INSERT INTO conversations(id, title, provider, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (conversation_id, clean_title, provider, model, now, now),
             )
-        return {"id": conversation_id, "title": clean_title, "created_at": now, "updated_at": now}
+        return {"id": conversation_id, "title": clean_title, "provider": provider, "model": model, "created_at": now, "updated_at": now}
 
     def list_conversations(self, limit: int = 50) -> list[dict]:
         safe_limit = max(1, min(limit, 100))
@@ -77,6 +77,26 @@ class MemoryStore:
             raise KeyError("Conversation not found")
         return conversation
 
+    def set_conversation_provider(self, conversation_id: str, provider: str, model: str) -> dict:
+        with self.database.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE conversations SET provider = ?, model = ?, updated_at = ? WHERE id = ?",
+                (provider, model, utc_now(), conversation_id),
+            )
+            if cursor.rowcount == 0:
+                raise KeyError("Conversation not found")
+        conversation = self.get_conversation(conversation_id)
+        if conversation is None:
+            raise KeyError("Conversation not found")
+        return conversation
+
+    def message_count(self, conversation_id: str) -> int:
+        with self.database.connect() as connection:
+            return int(connection.execute(
+                "SELECT COUNT(*) FROM messages WHERE conversation_id = ?",
+                (conversation_id,),
+            ).fetchone()[0])
+
     def delete_conversation(self, conversation_id: str) -> bool:
         with self.database.connect() as connection:
             cursor = connection.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
@@ -97,14 +117,34 @@ class MemoryStore:
             if conversation is None:
                 return None
             messages = connection.execute(
-                "SELECT id, conversation_id, role, content, provider, created_at FROM messages WHERE conversation_id = ? ORDER BY id",
+                "SELECT * FROM messages WHERE conversation_id = ? ORDER BY id",
                 (conversation_id,),
             ).fetchall()
         result = dict(conversation)
-        result["messages"] = [dict(row) for row in messages]
+        result["messages"] = []
+        for row in messages:
+            item = dict(row)
+            item["truncated"] = bool(item["truncated"])
+            item["context_truncated"] = bool(item["context_truncated"])
+            result["messages"].append(item)
         return result
 
-    def add_message(self, conversation_id: str, role: str, content: str, provider: str | None = None) -> dict:
+    def add_message(
+        self,
+        conversation_id: str,
+        role: str,
+        content: str,
+        provider: str | None = None,
+        *,
+        model: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        truncated: bool = False,
+        finish_reason: str | None = None,
+        context_messages: int | None = None,
+        context_truncated: bool = False,
+        retrieved_memory_count: int | None = None,
+    ) -> dict:
         if role not in {"user", "assistant"}:
             raise ValueError("Message role must be user or assistant")
         clean_content = content.strip()
@@ -117,8 +157,16 @@ class MemoryStore:
             if connection.execute("SELECT 1 FROM conversations WHERE id = ?", (conversation_id,)).fetchone() is None:
                 raise KeyError("Conversation not found")
             cursor = connection.execute(
-                "INSERT INTO messages(conversation_id, role, content, provider, created_at) VALUES (?, ?, ?, ?, ?)",
-                (conversation_id, role, clean_content, provider, now),
+                """INSERT INTO messages(
+                       conversation_id, role, content, provider, model, input_tokens,
+                       output_tokens, truncated, finish_reason, context_messages,
+                       context_truncated, retrieved_memory_count, created_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    conversation_id, role, clean_content, provider, model,
+                    input_tokens, output_tokens, int(truncated), finish_reason,
+                    context_messages, int(context_truncated), retrieved_memory_count, now,
+                ),
             )
             message_id = cursor.lastrowid
             if role == "user":
@@ -130,7 +178,9 @@ class MemoryStore:
                 )
             else:
                 connection.execute(
-                    "UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conversation_id)
+                    """UPDATE conversations SET updated_at = ?,
+                       provider = COALESCE(?, provider), model = COALESCE(?, model) WHERE id = ?""",
+                    (now, provider, model, conversation_id),
                 )
         return {
             "id": message_id,
@@ -138,6 +188,14 @@ class MemoryStore:
             "role": role,
             "content": clean_content,
             "provider": provider,
+            "model": model,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "truncated": truncated,
+            "finish_reason": finish_reason,
+            "context_messages": context_messages,
+            "context_truncated": context_truncated,
+            "retrieved_memory_count": retrieved_memory_count,
             "created_at": now,
         }
 
@@ -232,6 +290,27 @@ class MemoryStore:
         with self.database.connect() as connection:
             cursor = connection.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
             return cursor.rowcount > 0
+
+    def record_connection_test(self, provider: str, model: str, status: str, category: str, external: bool) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                "INSERT INTO connection_tests(provider, model, status, category, external, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (provider, model, status, category, int(external), utc_now()),
+            )
+
+    def latest_connection_tests(self) -> dict[str, dict]:
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                "SELECT provider, model, status, category, external, created_at FROM connection_tests ORDER BY id DESC LIMIT 500"
+            ).fetchall()
+        result = {}
+        for row in rows:
+            if row["provider"] not in result:
+                result[row["provider"]] = {
+                    "status": row["status"], "model": row["model"], "category": row["category"],
+                    "external": bool(row["external"]), "tested_at": row["created_at"],
+                }
+        return result
 
 
 class MemoryExtractor:

@@ -19,6 +19,22 @@ def redact_secrets(text: str) -> str:
     return redacted
 
 
+def _http_category(status: int) -> tuple[str, bool]:
+    if status == 401:
+        return "invalid_key", False
+    if status == 403:
+        return "permission_denied", False
+    if status == 404:
+        return "model_unavailable", False
+    if status == 429:
+        return "rate_limit", True
+    if status >= 500:
+        return "upstream_unavailable", True
+    if status in {408, 409, 425}:
+        return "network", True
+    return "invalid_request", False
+
+
 def request_json(
     method: str,
     url: str,
@@ -45,9 +61,22 @@ def request_json(
             detail = str(parsed.get("error", parsed))[:500]
         except (json.JSONDecodeError, TypeError):
             pass
-        raise ProviderError(redact_secrets(f"Provider returned HTTP {exc.code}: {detail}")) from exc
+        category, retryable = _http_category(exc.code)
+        retry_header = exc.headers.get("Retry-After", "") if exc.headers else ""
+        retry_after = int(retry_header) if retry_header.isdigit() else None
+        raise ProviderError(
+            redact_secrets(f"Provider returned HTTP {exc.code}: {detail}"),
+            category=category,
+            status=exc.code,
+            retryable=retryable,
+            retry_after=retry_after,
+        ) from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise ProviderError(redact_secrets(f"Provider network error: {exc.reason if hasattr(exc, 'reason') else exc}")) from exc
+        raise ProviderError(
+            redact_secrets(f"Provider network error: {exc.reason if hasattr(exc, 'reason') else exc}"),
+            category="network",
+            retryable=True,
+        ) from exc
     if not raw.strip():
         return {}
     try:

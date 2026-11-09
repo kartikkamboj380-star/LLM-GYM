@@ -41,6 +41,7 @@ function showView(name) {
   });
   if (name === "memory") loadMemories().catch((error) => toast(error.message, true));
   if (name === "dashboard") loadDashboard().catch((error) => toast(error.message, true));
+  if (name === "providers") loadProviders().catch((error) => toast(error.message, true));
 }
 
 async function loadDashboard() {
@@ -80,10 +81,46 @@ async function loadDashboard() {
   });
 }
 
+function renderProviderCards(providers) {
+  const grid = $("#provider-grid");
+  grid.replaceChildren();
+  providers.forEach((provider) => {
+    const card = document.createElement("article");
+    card.className = "card provider-card";
+    const heading = document.createElement("div");
+    heading.className = "card-title-row";
+    const title = document.createElement("h2");
+    title.textContent = provider.label;
+    const status = document.createElement("span");
+    const failed = ["failed", "configuration_required"].includes(provider.connection_status);
+    status.className = `pill${provider.connection_status === "verified" ? " safe" : failed ? " warn" : ""}`;
+    status.textContent = provider.configured ? provider.connection_status.replaceAll("_", " ") : "configuration required";
+    heading.append(title, status);
+    const model = document.createElement("p");
+    model.className = "provider-model";
+    model.textContent = provider.model;
+    const capabilities = document.createElement("p");
+    capabilities.textContent = `${provider.external ? "External API" : "Offline local"} · chat · system prompts · ${provider.capabilities.usage ? "usage field" : "no usage"} · connection: ${provider.capabilities.connection_test} · streaming off`;
+    const detail = document.createElement("p");
+    detail.className = "field-note";
+    detail.textContent = provider.last_test
+      ? `Last ${provider.last_test.status.replaceAll("_", " ")}: ${provider.last_test.tested_at} · ${provider.last_test.category}`
+      : "No connection test has been run.";
+    const button = document.createElement("button");
+    button.className = "button secondary compact";
+    button.disabled = !provider.configured;
+    button.textContent = provider.configured ? (provider.external ? "Test external connection" : "Run local check") : "Configure server key first";
+    button.addEventListener("click", () => testProvider(provider, button));
+    card.append(heading, model, capabilities, detail, button);
+    grid.append(card);
+  });
+}
+
 async function loadProviders() {
   const data = await api("/api/providers");
   state.providers = data.providers;
   const select = $("#provider-select");
+  const previous = select.value;
   select.replaceChildren();
   data.providers.forEach((provider) => {
     const option = document.createElement("option");
@@ -92,20 +129,71 @@ async function loadProviders() {
     option.disabled = !provider.configured;
     select.append(option);
   });
-  select.value = data.providers.some((p) => p.id === data.default && p.configured) ? data.default : "mock";
+  const preferred = previous || data.default;
+  select.value = data.providers.some((p) => p.id === preferred && p.configured) ? preferred : "mock";
   updateProviderNote();
+  renderProviderCards(data.providers);
+}
+
+async function testProvider(provider, button) {
+  if (provider.external && !window.confirm(`Contact ${provider.label} to inspect ${provider.model}? This sends a documented GET model request, not a chat generation. Provider limits may apply.`)) return;
+  busy(button, true, "Testing…");
+  try {
+    const result = await api("/api/providers/test", {
+      method: "POST",
+      body: { provider: provider.id, confirm_external: provider.external },
+    });
+    toast(`${result.provider}: ${result.model} verified by ${result.operation}.`);
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    busy(button, false);
+    await loadProviders().catch((error) => toast(error.message, true));
+  }
 }
 
 function updateProviderNote() {
   const provider = state.providers.find((item) => item.id === $("#provider-select").value);
   if (!provider) return;
+  const status = provider.connection_status === "verified" ? "connection verified" : provider.connection_status.replaceAll("_", " ");
   $("#provider-note").textContent = provider.external
-    ? `${provider.model} · External API charges/limits depend on your provider account.`
-    : "The mock runs offline and makes no external request.";
+    ? `${provider.model} · ${status} · External API charges/limits depend on your provider account.`
+    : `Offline mock · ${status} · no external request is made.`;
+}
+
+function renderConversationModel(conversation) {
+  const provider = state.providers.find((item) => item.id === conversation.provider);
+  const label = provider ? provider.label : conversation.provider || "unknown provider";
+  $("#conversation-model").textContent = `Model: ${label} · ${conversation.model || "not recorded"}`;
+}
+
+async function setConversationProvider() {
+  updateProviderNote();
+  if (!state.conversationId) return;
+  const select = $("#provider-select");
+  const provider = select.value;
+  select.disabled = true;
+  try {
+    const conversation = await api(`/api/conversations/${encodeURIComponent(state.conversationId)}`, {
+      method: "PATCH",
+      body: { provider },
+    });
+    renderConversationModel(conversation);
+    toast(`Next responses will use ${provider}.`);
+  } catch (error) {
+    toast(error.message, true);
+    await loadConversation().catch((reloadError) => toast(reloadError.message, true));
+  } finally {
+    select.disabled = false;
+    updateProviderNote();
+  }
 }
 
 async function createConversation() {
-  const conversation = await api("/api/conversations", { method: "POST", body: {} });
+  const conversation = await api("/api/conversations", {
+    method: "POST",
+    body: { provider: $("#provider-select").value || "mock" },
+  });
   state.conversationId = conversation.id;
   await Promise.all([loadConversations(), loadConversation()]);
   $("#chat-input").focus();
@@ -150,6 +238,27 @@ function renderMessage(message) {
   const content = document.createElement("p");
   content.textContent = message.content;
   article.append(meta, content);
+  if (message.role === "assistant") {
+    const chips = [];
+    if (message.model) chips.push({ text: `Model ${message.model}` });
+    const input = Number.isFinite(message.input_tokens) ? message.input_tokens : "—";
+    const output = Number.isFinite(message.output_tokens) ? message.output_tokens : "—";
+    chips.push({ text: Number.isFinite(message.input_tokens) || Number.isFinite(message.output_tokens) ? `Tokens ${input}/${output}` : "Tokens not reported" });
+    if (message.finish_reason) chips.push({ text: `Finish ${message.finish_reason}` });
+    if (message.truncated) chips.push({ text: "Output truncated", warning: true });
+    if (Number.isFinite(message.context_messages)) chips.push({ text: `Context ${message.context_messages} message${message.context_messages === 1 ? "" : "s"}` });
+    if (message.context_truncated) chips.push({ text: "Earlier history omitted", warning: true });
+    if (Number.isFinite(message.retrieved_memory_count)) chips.push({ text: `${message.retrieved_memory_count} retrieved memor${message.retrieved_memory_count === 1 ? "y" : "ies"}` });
+    const details = document.createElement("div");
+    details.className = "response-meta";
+    chips.forEach((chip) => {
+      const span = document.createElement("span");
+      span.textContent = chip.text;
+      if (chip.warning) span.className = "warning";
+      details.append(span);
+    });
+    article.append(details);
+  }
   return article;
 }
 
@@ -157,6 +266,12 @@ async function loadConversation() {
   if (!state.conversationId) return;
   const conversation = await api(`/api/conversations/${encodeURIComponent(state.conversationId)}`);
   $("#conversation-title").textContent = conversation.title;
+  renderConversationModel(conversation);
+  const select = $("#provider-select");
+  const saved = state.providers.find((item) => item.id === conversation.provider && item.configured);
+  if (saved) select.value = saved.id;
+  else if (state.providers.some((item) => item.id === "mock" && item.configured)) select.value = "mock";
+  updateProviderNote();
   const container = $("#messages");
   container.replaceChildren();
   if (!conversation.messages.length) {
@@ -239,8 +354,13 @@ async function sendMessage(event) {
       body: { content: input.value, provider: $("#provider-select").value },
     });
     input.value = "";
+    const context = result.context;
+    const output = result.truncated ? "output truncated" : "output complete";
+    const finish = result.finish_reason ? ` · finish ${result.finish_reason}` : "";
+    $("#chat-context").textContent = `Context: ${context.history_messages}/${context.history_limit} recent messages${context.history_truncated ? " · earlier history omitted" : ""} · ${context.retrieved_memories}/${context.retrieval_limit} memories · ${output}${finish} · streaming off.`;
     await Promise.all([loadConversation(), loadConversations()]);
-    if (result.retrieved_memories.length) toast(`Response used ${result.retrieved_memories.length} retrieved memor${result.retrieved_memories.length === 1 ? "y" : "ies"}.`);
+    if (result.truncated) toast("The provider stopped at its output limit; the saved answer may be incomplete.", true);
+    else if (result.retrieved_memories.length) toast(`Response used ${result.retrieved_memories.length} retrieved memor${result.retrieved_memories.length === 1 ? "y" : "ies"}.`);
   } catch (error) {
     toast(error.message, true);
   } finally {
@@ -452,7 +572,7 @@ async function initialize() {
   $("#refresh-dashboard").addEventListener("click", () => loadDashboard().then(() => toast("Dashboard refreshed.")).catch((error) => toast(error.message, true)));
   document.querySelectorAll("[data-open-view]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.openView)));
   $("#chat-form").addEventListener("submit", sendMessage);
-  $("#provider-select").addEventListener("change", updateProviderNote);
+  $("#provider-select").addEventListener("change", () => setConversationProvider().catch((error) => toast(error.message, true)));
   $("#extract-memory").addEventListener("click", extractMemories);
   $("#memory-form").addEventListener("submit", saveMemory);
   $("#memory-search-form").addEventListener("submit", (event) => { event.preventDefault(); loadMemories($("#memory-search").value).catch((error) => toast(error.message, true)); });

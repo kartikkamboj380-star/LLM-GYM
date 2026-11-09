@@ -2,7 +2,7 @@
 
 A local-first, Android-friendly AI learning lab with persistent chat memory, model comparison, a safe mock verification inbox, and strictly authorized automation.
 
-**Milestone status: working offline.** The web app, Python API, SQLite persistence, lexical retrieval, mock chat, mock email verification, evaluation CLI, and tests run without API keys or pip dependencies. External model APIs and the official Design Arena API require separate credentials.
+**Milestone status: working offline; product partially implemented.** The web app, Python API, SQLite persistence, lexical retrieval, mock chat, provider catalog/connection tests, mock email verification, evaluation CLI, and tests run without API keys or pip dependencies. External model APIs and the official Design Arena API require separate credentials. Provider contracts are locally verified with mocked HTTP; no live GPT, Claude, Gemini, or custom provider request has been made. Streaming is not implemented.
 
 > Memory is retrieval, not retraining. This project does **not** claim to fine-tune GPT, Claude, or Gemini. Fine-tuning is possible only through a provider's own supported interface and is outside this milestone.
 
@@ -19,7 +19,10 @@ A local-first, Android-friendly AI learning lab with persistent chat memory, mod
 | Explicit fact extraction from your own conversations | Working locally | No |
 | Numeric/alphanumeric text/HTML verification, filtering, ambiguity and expiry handling | Working locally | No |
 | Mock inbox lifecycle, cancellation, failure simulation, sanitized reports | Working locally | No |
-| GPT, Claude, Gemini, OpenAI-compatible adapters | Implemented; HTTP formats unit-tested | Yes, external API |
+| GPT, Claude, Gemini, OpenAI-compatible adapters | Implemented; generation and model-inspection contracts mocked-tested | Yes, external API |
+| Provider catalog, capabilities, explicit connection tests, normalized errors | Working locally; live external verification not performed | Yes for live provider test |
+| Model selection, usage/finish/truncation and bounded-context metadata | Working locally | No, with `mock` |
+| Provider status and test controls in the web UI | Working locally; JS/HTTP checked, real-browser flow not yet added | No |
 | Dataset evaluation, comparison, Markdown/JSON reports | Working locally | Only for external providers |
 | Design Arena read-only leaderboard client | Implemented against official docs | Approved API key |
 | Independent local registration demo and HTTP E2E | Working locally | No |
@@ -125,6 +128,14 @@ Remote custom endpoints must use HTTPS; HTTP is accepted only on loopback. Model
 
 For CI that genuinely calls an external provider, store credentials in **GitHub → Settings → Secrets and variables → Actions**, then pass the specific secret to a separately authorized workflow. The included CI needs no secrets and never calls paid APIs.
 
+## Verify a provider connection
+
+Open **Providers** in the UI to inspect configured models, capabilities, and the latest local test result. Choose **Run local check** for the offline mock. **Test external connection** requires an explicit confirmation dialog and sends a documented `GET` model-inspection request; it does not generate chat text. The backend persists the safe result and categorized failures, never the key.
+
+The API equivalent is `POST /api/providers/test` with `{"provider":"mock"}` or, for external providers, `{"provider":"openai","confirm_external":true}`. `GET /api/providers` reports `configured` booleans, capabilities, and `streaming: false`. Provider errors are categorized, bounded, and redacted; a missing external key does not silently fall back to the mock.
+
+Chat records the selected provider/model, normalized token usage where reported, finish reason, output truncation, bounded history/memory context, and retrieved-memory count. Markdown export includes this safe metadata. **Streaming is not implemented:** responses are saved only after a complete provider result. See [provider contracts](docs/PROVIDERS.md) for endpoints, error categories, and the exact verification boundary.
+
 ## Safe mock email verification
 
 In **Test inbox**:
@@ -190,7 +201,7 @@ static/                       Mobile-first HTML/CSS/vanilla JS (no secrets)
 app/api.py                    Same-origin JSON API + static server
 app/chat.py                   History → retrieval → provider → persistence
 app/memory.py                 SQLite conversations, knowledge, ranking, extraction
-app/providers/                Mock, GPT, Claude, Gemini, compatible adapters
+app/providers/                Mock, GPT, Claude, Gemini, compatible adapters and catalog/error contracts
 app/email/                    Email interface, parser, mock, optional mail.tm
 app/designarena/              Official read-only API client only
 app/automation/               Optional Playwright authorized-flow runner
@@ -202,17 +213,18 @@ data/                         Ignored runtime DB/reports
 
 All core runtime functionality uses Python's standard library. SQLite is included with Python; there is no vector database, embedding service, Docker image, frontend build, or large framework. Retrieval uses bounded local lexical ranking over up to 1,000 recent memories. That is appropriate for this lightweight milestone, not unlimited enterprise-scale semantic search.
 
-More detail: [architecture and phased plan](docs/ARCHITECTURE.md) · [repository audit](docs/PROJECT_AUDIT.md) · [API conventions](docs/API.md) · [email/OTP lab](docs/EMAIL.md) · [automation](docs/AUTOMATION.md) · [testing](docs/TESTING.md) · [security](docs/security.md) · [deployment](docs/deployment.md).
+More detail: [architecture and phased plan](docs/ARCHITECTURE.md) · [repository audit](docs/PROJECT_AUDIT.md) · [API conventions](docs/API.md) · [provider contracts](docs/PROVIDERS.md) · [email/OTP lab](docs/EMAIL.md) · [automation](docs/AUTOMATION.md) · [testing](docs/TESTING.md) · [security](docs/security.md) · [deployment](docs/deployment.md).
 
 ## API summary
 
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/api/health` | Server and database health |
-| GET | `/api/providers` | Model names and configured booleans, never keys |
+| GET | `/api/providers` | Models, capabilities, configured booleans and safe test status, never keys |
+| POST | `/api/providers/test` | Explicit local or confirmed external non-generation connection test |
 | GET | `/api/dashboard` | Real local status, counts, recent activity |
 | GET/POST | `/api/conversations` | List/create conversations |
-| GET/PATCH/DELETE | `/api/conversations/{id}` | Retrieve, rename, or delete a conversation |
+| GET/PATCH/DELETE | `/api/conversations/{id}` | Retrieve, rename/select model, or delete a conversation |
 | GET | `/api/conversations/{id}/export?format=json\|markdown` | Export a conversation |
 | POST | `/api/conversations/{id}/messages` | Chat with selected provider |
 | GET/POST | `/api/memory` | Search/list or add knowledge |

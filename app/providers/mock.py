@@ -7,6 +7,13 @@ from .base import AIProvider, ChatResponse, Message
 
 class MockProvider(AIProvider):
     name = "mock"
+    model = "mock-1"
+
+    def capabilities(self) -> dict:
+        return {"chat": True, "system_prompt": True, "usage": True, "streaming": False, "connection_test": "local"}
+
+    def test_connection(self) -> dict:
+        return {"status": "verified", "provider": self.name, "model": self.model, "external": False, "operation": "local"}
 
     def generate(self, messages: list[Message], system_prompt: str | None = None) -> ChatResponse:
         user_messages = [message["content"] for message in messages if message.get("role") == "user"]
