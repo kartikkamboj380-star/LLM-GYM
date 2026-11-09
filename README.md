@@ -197,7 +197,7 @@ data/                         Ignored runtime DB/reports
 
 All core runtime functionality uses Python's standard library. SQLite is included with Python; there is no vector database, embedding service, Docker image, frontend build, or large framework. Retrieval uses bounded local lexical ranking over up to 1,000 recent memories. That is appropriate for this lightweight milestone, not unlimited enterprise-scale semantic search.
 
-More detail: [architecture](docs/architecture.md) · [security](docs/security.md) · [deployment](docs/deployment.md).
+More detail: [architecture and phased plan](docs/ARCHITECTURE.md) · [repository audit](docs/PROJECT_AUDIT.md) · [security](docs/security.md) · [deployment](docs/deployment.md).
 
 ## API summary
 
