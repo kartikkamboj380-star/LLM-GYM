@@ -14,6 +14,16 @@ class AutomationConfigTests(unittest.TestCase):
         config = AutomationConfig.from_dict({"url": "https://example.com", "actions": [{"type": "wait_for", "selector": "h1"}], "timeout_seconds": 5, "retries": 1})
         self.assertEqual(5, config.timeout_seconds)
         self.assertEqual("wait_for", config.actions[0]["type"])
+        readiness = AutomationConfig.from_dict({
+            "url": "http://127.0.0.1:8000/demo",
+            "actions": [
+                {"type": "wait_for_text", "selector": "#status", "text": "Verified"},
+                {"type": "wait_for_value", "selector": "#otp"},
+            ],
+        })
+        self.assertEqual("wait_for_text", readiness.actions[0]["type"])
+        with self.assertRaises(ValueError):
+            AutomationConfig.from_dict({"url": "https://example.com", "actions": [{"type": "wait_for_text", "selector": "#status"}]})
 
     def test_fixed_wait_and_unsupported_actions_are_not_available(self):
         with self.assertRaises(ValueError):

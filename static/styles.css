@@ -174,6 +174,18 @@ input:focus, textarea:focus, select:focus { border-color: #d7ff7270; }
 .arena-layout .card > p:not(.eyebrow) { color: var(--muted); font-size: .8rem; }
 .api-output-card pre { min-height: 270px; margin: 0; color: #c2d2c6; font-size: .72rem; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 
+.demo-main { max-width: 900px; }
+.demo-card { display: grid; gap: 20px; }
+.demo-status { min-height: 82px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #101712; }
+.demo-status strong { color: var(--accent); font-size: .82rem; }
+.demo-status p { margin: 5px 0 0; color: var(--muted); font-size: .76rem; overflow-wrap: anywhere; }
+.demo-form { display: grid; gap: 10px; }
+.demo-form[hidden] { display: none; }
+.demo-form label { margin-top: 5px; color: var(--muted); font-size: .75rem; }
+.demo-form input, .demo-form select { width: 100%; min-height: 46px; padding: 11px; }
+.demo-form .button { justify-self: start; }
+.demo-card > .button, .demo-card > .text-button { justify-self: start; }
+
 footer { display: flex; justify-content: space-between; gap: 16px; padding: 18px clamp(16px, 4vw, 56px); border-top: 1px solid var(--line); color: #6f8074; font-size: .66rem; }
 .toast { position: fixed; z-index: 10; right: 18px; bottom: 18px; width: min(390px, calc(100% - 36px)); padding: 14px 17px; border: 1px solid #4a603e; border-radius: 11px; background: #22301f; box-shadow: 0 12px 40px #0008; color: var(--text); font-size: .8rem; }
 .toast.error { border-color: #79443f; background: #34201e; color: #ffd0ca; }

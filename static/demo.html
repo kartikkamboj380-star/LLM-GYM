@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Local registration demo · LLM-GYM</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/demo.js" defer></script>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="/"><span class="brand-mark">L/</span><span><strong>LOCAL DEMO</strong><small>Authorized browser testing</small></span></a><a class="button secondary compact" href="/">Main app</a></header>
+  <main class="demo-main">
+    <div class="section-header"><div><p class="eyebrow">Independent of Design Arena</p><h1>Registration test range.</h1><p>A local email → mock inbox → OTP workflow. No real account, external signup, CAPTCHA, or security control is involved.</p></div><span class="pill safe">Local only</span></div>
+    <section class="card demo-card">
+      <div id="demo-status" class="demo-status" role="status" aria-live="polite"><strong>Ready</strong><p>Create a mock inbox to begin.</p></div>
+      <button id="create-demo-inbox" class="button secondary">1. Create mock inbox</button>
+      <form id="demo-register-form" class="demo-form">
+        <label for="email">Email address</label>
+        <input id="email" name="email" type="email" autocomplete="email" placeholder="Create the inbox first" required>
+        <label for="demo-scenario">Scenario</label>
+        <select id="demo-scenario"><option value="valid">Valid delivery</option><option value="expired">Expired message</option></select>
+        <button id="demo-continue" class="button primary" type="submit" disabled>2. Continue</button>
+      </form>
+      <form id="demo-otp-form" class="demo-form" hidden>
+        <button id="retrieve-otp" class="button secondary" type="button">3. Retrieve OTP from mock inbox</button>
+        <label for="otp">Six-digit OTP</label>
+        <input id="otp" name="otp" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="Retrieve or enter a test value" required>
+        <button id="verify-otp" class="button primary" type="submit">4. Verify OTP</button>
+      </form>
+      <button id="demo-reset" class="text-button" type="button">Clean up and start over</button>
+    </section>
+    <p class="safety-note">Invalid codes are allowed for retry testing. Expired scenarios expire at delivery for deterministic testing. OTPs stay in process memory and are never returned by the registration endpoint.</p>
+  </main>
+</body>
+</html>

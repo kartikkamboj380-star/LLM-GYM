@@ -1,0 +1,18 @@
+{
+  "url": "http://127.0.0.1:8000/demo",
+  "timeout_seconds": 10,
+  "retries": 1,
+  "actions": [
+    { "type": "wait_for", "selector": "#create-demo-inbox" },
+    { "type": "click", "selector": "#create-demo-inbox" },
+    { "type": "wait_for_value", "selector": "#email" },
+    { "type": "click", "selector": "#demo-continue" },
+    { "type": "wait_for", "selector": "#otp" },
+    { "type": "click", "selector": "#retrieve-otp" },
+    { "type": "wait_for_text", "selector": "#demo-status", "text": "OTP retrieved" },
+    { "type": "wait_for_value", "selector": "#otp" },
+    { "type": "click", "selector": "#verify-otp" },
+    { "type": "wait_for_text", "selector": "#demo-status", "text": "Verification verified" },
+    { "type": "click", "selector": "#demo-reset" }
+  ]
+}

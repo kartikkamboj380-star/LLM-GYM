@@ -15,6 +15,7 @@ from .chat import ChatService
 from .config import Settings
 from .database import Database
 from .designarena import DesignArenaClient
+from .demo import RegistrationDemo
 from .email import EmailProviderRateLimit, MockEmailProvider, OTPRules, VerificationCodeParser
 from .errors import APIError
 from .exporters import conversation_markdown
@@ -37,6 +38,7 @@ class Application:
         self.chat = ChatService(self.store, settings)
         self.extractor = MemoryExtractor()
         self.email = MockEmailProvider()
+        self.demo = RegistrationDemo(self.email)
         self.code_parser = VerificationCodeParser()
         self.rate_limiter = InMemoryRateLimiter()
 
@@ -301,6 +303,26 @@ class RequestHandler(BaseHTTPRequestHandler):
                 raise KeyError("Memory not found")
             self._json(200, {"deleted": True})
             return
+        if method == "POST" and path == "/api/demo/register":
+            self._rate_limit("demo registration", self.app.settings.email_rate_limit)
+            data = self._read_json()
+            result = self.app.demo.start(
+                self._string(data, "email"),
+                self._string(data, "inbox_id"),
+                self._string(data, "scenario", "valid"),
+            )
+            self._json(201, result)
+            return
+        match = re.fullmatch(r"/api/demo/sessions/([^/]+)/verify", path)
+        if method == "POST" and match:
+            self._rate_limit("demo verification", self.app.settings.email_rate_limit)
+            data = self._read_json()
+            self._json(200, self.app.demo.verify(match.group(1), self._string(data, "code")))
+            return
+        match = re.fullmatch(r"/api/demo/sessions/([^/]+)/cleanup", path)
+        if method == "POST" and match:
+            self._json(200, self.app.demo.cleanup(match.group(1)))
+            return
         if method == "GET" and path == "/api/email/mock/capabilities":
             self._json(200, self.app.email.capabilities())
             return
@@ -409,6 +431,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             "/app.js": ("app.js", "text/javascript; charset=utf-8"),
             "/styles.css": ("styles.css", "text/css; charset=utf-8"),
             "/favicon.svg": ("favicon.svg", "image/svg+xml"),
+            "/demo": ("demo.html", "text/html; charset=utf-8"),
+            "/demo.html": ("demo.html", "text/html; charset=utf-8"),
+            "/demo.js": ("demo.js", "text/javascript; charset=utf-8"),
         }
         if path not in files:
             raise APIError(404, "NOT_FOUND", "Not found")

@@ -56,12 +56,16 @@ class AutomationConfig:
         if not isinstance(actions, list) or not actions:
             raise ValueError("Automation requires a non-empty actions list")
         for action in actions:
-            if action.get("type") not in {"wait_for", "fill", "click"}:
-                raise ValueError("Allowed actions: wait_for, fill, click")
+            if action.get("type") not in {"wait_for", "fill", "click", "wait_for_text", "wait_for_value"}:
+                raise ValueError("Allowed actions: wait_for, fill, click, wait_for_text, wait_for_value")
             if not isinstance(action.get("selector"), str) or not action["selector"].strip():
                 raise ValueError("Every automation action needs a selector")
             if action["type"] == "fill" and not isinstance(action.get("value"), str):
                 raise ValueError("Fill actions need a string value")
+            if action["type"] == "wait_for_text" and not isinstance(action.get("text"), str):
+                raise ValueError("wait_for_text actions need expected text")
+            if action["type"] == "wait_for_value" and "value" in action and not isinstance(action["value"], str):
+                raise ValueError("wait_for_value expected value must be a string")
         timeout = float(data.get("timeout_seconds", 30))
         retries = int(data.get("retries", 2))
         if not 1 <= timeout <= 120:
@@ -92,7 +96,7 @@ def run_authorized_flow(config: AutomationConfig) -> ExecutionLog:
     log = ExecutionLog()
     log.add("started", url=config.url, timeout_seconds=config.timeout_seconds, retries=config.retries)
     try:
-        from playwright.sync_api import sync_playwright
+        from playwright.sync_api import expect, sync_playwright
     except ImportError as exc:
         raise AutomationError(
             "Playwright is optional. Install requirements-automation.txt and run 'playwright install chromium'."
@@ -117,6 +121,13 @@ def run_authorized_flow(config: AutomationConfig) -> ExecutionLog:
                         locator.fill(os.path.expandvars(action["value"]))
                     elif action_type == "click":
                         locator.click()
+                    elif action_type == "wait_for_text":
+                        expect(locator).to_contain_text(action["text"])
+                    elif action_type == "wait_for_value":
+                        if action.get("value"):
+                            expect(locator).to_have_value(action["value"])
+                        else:
+                            expect(locator).not_to_have_value("")
 
                 _retry(perform, config.retries, log, f"{index}:{action_type}")
                 # Never log filled values; they can contain credentials.

@@ -25,3 +25,23 @@ jobs:
       - name: Run offline unit and HTTP integration tests
         run: python -m unittest discover -s tests -v
       # No provider secrets are needed: external API calls are mocked.
+
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install optional browser test dependencies
+        run: |
+          python -m pip install -r requirements-automation.txt
+          python -m playwright install --with-deps chromium
+      - name: Run authorized local registration browser flows
+        run: |
+          set -e
+          for flow in local-demo-e2e local-demo-invalid-retry-e2e local-demo-expired-e2e local-demo-timeout-e2e; do
+            python -m app.automation.local_e2e "examples/${flow}.json"
+          done
+      # This job is required to execute, not skip, all four real Chromium flows.

@@ -164,6 +164,54 @@ class APIIntegrationTests(unittest.TestCase):
         status, _, _ = self.request(f"/api/email/mock/inboxes/{inbox_id}")
         self.assertEqual(404, status)
 
+    def test_local_registration_valid_retry_expired_and_cleanup(self):
+        _, inbox, _ = self.request("/api/email/mock/inboxes", "POST", {})
+        status, session, _ = self.request(
+            "/api/demo/register",
+            "POST",
+            {"email": inbox["address"], "inbox_id": inbox["id"], "scenario": "valid"},
+        )
+        self.assertEqual(201, status)
+        self.assertNotIn("code", session)
+        status, poll, _ = self.request(
+            f"/api/email/mock/inboxes/{inbox['id']}/poll",
+            "POST",
+            {"timeout_seconds": 0, "rules": {"expected_length": 6, "expected_application": "LLM-GYM Local Demo", "expected_test_run": session["session_id"]}},
+        )
+        self.assertEqual("verified", poll["status"])
+        wrong = "000000" if poll["code"] != "000000" else "111111"
+        _, invalid, _ = self.request(f"/api/demo/sessions/{session['session_id']}/verify", "POST", {"code": wrong})
+        self.assertEqual("invalid", invalid["status"])
+        _, verified, _ = self.request(f"/api/demo/sessions/{session['session_id']}/verify", "POST", {"code": poll["code"]})
+        self.assertEqual("verified", verified["status"])
+        _, cleaned, _ = self.request(f"/api/demo/sessions/{session['session_id']}/cleanup", "POST", {})
+        self.assertTrue(cleaned["inbox_deleted"])
+        status, _, _ = self.request(f"/api/email/mock/inboxes/{inbox['id']}")
+        self.assertEqual(404, status)
+
+        _, expired_inbox, _ = self.request("/api/email/mock/inboxes", "POST", {})
+        _, expired_session, _ = self.request(
+            "/api/demo/register",
+            "POST",
+            {"email": expired_inbox["address"], "inbox_id": expired_inbox["id"], "scenario": "expired"},
+        )
+        _, expired_poll, _ = self.request(f"/api/email/mock/inboxes/{expired_inbox['id']}/poll", "POST", {"timeout_seconds": 0})
+        self.assertEqual("expired", expired_poll["status"])
+        self.request(f"/api/demo/sessions/{expired_session['session_id']}/cleanup", "POST", {})
+
+    def test_demo_rejects_mismatched_email_and_serves_page(self):
+        _, inbox, _ = self.request("/api/email/mock/inboxes", "POST", {})
+        status, error, _ = self.request(
+            "/api/demo/register", "POST", {"email": "other@example.test", "inbox_id": inbox["id"]}
+        )
+        self.assertEqual(400, status)
+        self.assertEqual("VALIDATION_ERROR", error["code"])
+        status, page, content_type = self.request("/demo")
+        self.assertEqual(200, status)
+        self.assertIn("Independent of Design Arena", page)
+        self.assertIn("text/html", content_type)
+        self.request(f"/api/email/mock/inboxes/{inbox['id']}", "DELETE")
+
     def test_mock_email_expiry_and_ambiguity_are_explicit(self):
         _, expired, _ = self.request("/api/email/mock/inboxes", "POST", {"ttl_seconds": 0})
         _, result, _ = self.request(f"/api/email/mock/inboxes/{expired['id']}/poll", "POST", {"timeout_seconds": 60})

@@ -22,7 +22,8 @@ A local-first, Android-friendly AI learning lab with persistent chat memory, mod
 | GPT, Claude, Gemini, OpenAI-compatible adapters | Implemented; HTTP formats unit-tested | Yes, external API |
 | Dataset evaluation, comparison, Markdown/JSON reports | Working locally | Only for external providers |
 | Design Arena read-only leaderboard client | Implemented against official docs | Approved API key |
-| Playwright authorized-browser runner | Implemented; configuration unit-tested | Optional installation |
+| Independent local registration demo and HTTP E2E | Working locally | No |
+| Playwright authorized-browser runner + four E2E configs | Implemented; separate required browser CI job | Optional installation |
 | mail.tm adapter for authorized API tests | Implemented, not enabled in default UI | External test account |
 
 The `mock` provider is deliberately deterministic. It is useful for development and testing, but it is **not a real generative AI model**.
@@ -201,7 +202,7 @@ data/                         Ignored runtime DB/reports
 
 All core runtime functionality uses Python's standard library. SQLite is included with Python; there is no vector database, embedding service, Docker image, frontend build, or large framework. Retrieval uses bounded local lexical ranking over up to 1,000 recent memories. That is appropriate for this lightweight milestone, not unlimited enterprise-scale semantic search.
 
-More detail: [architecture and phased plan](docs/ARCHITECTURE.md) · [repository audit](docs/PROJECT_AUDIT.md) · [API conventions](docs/API.md) · [email/OTP lab](docs/EMAIL.md) · [security](docs/security.md) · [deployment](docs/deployment.md).
+More detail: [architecture and phased plan](docs/ARCHITECTURE.md) · [repository audit](docs/PROJECT_AUDIT.md) · [API conventions](docs/API.md) · [email/OTP lab](docs/EMAIL.md) · [automation](docs/AUTOMATION.md) · [testing](docs/TESTING.md) · [security](docs/security.md) · [deployment](docs/deployment.md).
 
 ## API summary
 
