@@ -1,0 +1,11 @@
+{
+  "url": "https://example.com",
+  "timeout_seconds": 15,
+  "retries": 1,
+  "actions": [
+    {
+      "type": "wait_for",
+      "selector": "h1"
+    }
+  ]
+}
