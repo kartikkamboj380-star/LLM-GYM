@@ -66,7 +66,7 @@ The default bind address is loopback (`127.0.0.1`) so the unauthenticated person
 python run.py --host 0.0.0.0 --port 8000
 ```
 
-Do not expose this milestone directly to the public internet. It has no multi-user authentication or rate limiter.
+Do not expose this milestone directly to the public internet. It has no multi-user authentication or tenant isolation. Built-in per-client local rate limits bound chat and email operations, but they are not sufficient protection for a public deployment.
 
 ## Try persistent memory
 
@@ -197,7 +197,7 @@ data/                         Ignored runtime DB/reports
 
 All core runtime functionality uses Python's standard library. SQLite is included with Python; there is no vector database, embedding service, Docker image, frontend build, or large framework. Retrieval uses bounded local lexical ranking over up to 1,000 recent memories. That is appropriate for this lightweight milestone, not unlimited enterprise-scale semantic search.
 
-More detail: [architecture and phased plan](docs/ARCHITECTURE.md) · [repository audit](docs/PROJECT_AUDIT.md) · [security](docs/security.md) · [deployment](docs/deployment.md).
+More detail: [architecture and phased plan](docs/ARCHITECTURE.md) · [repository audit](docs/PROJECT_AUDIT.md) · [API conventions](docs/API.md) · [security](docs/security.md) · [deployment](docs/deployment.md).
 
 ## API summary
 

@@ -3,6 +3,7 @@ import tempfile
 import threading
 import unittest
 import urllib.error
+from dataclasses import replace
 import urllib.request
 
 from app.api import create_server
@@ -46,7 +47,12 @@ class APIIntegrationTests(unittest.TestCase):
     def test_health_static_frontend_and_security_headers(self):
         status, health, _ = self.request("/api/health")
         self.assertEqual(200, status)
-        self.assertEqual({"status": "ok", "database": True, "version": "0.1.0"}, health)
+        self.assertEqual("ok", health["status"])
+        self.assertTrue(health["database"])
+        self.assertEqual(1, health["schema_version"])
+        self.assertEqual("0.1.0", health["version"])
+        self.assertTrue(health["providers"]["mock"])
+        self.assertFalse(health["providers"]["openai"])
         with urllib.request.urlopen(self.base + "/", timeout=3) as response:
             html = response.read().decode()
             self.assertIn("LLM-GYM", html)
@@ -105,6 +111,33 @@ class APIIntegrationTests(unittest.TestCase):
         self.assertEqual(404, status)
         status, error, _ = self.request("/api/conversations", "POST", [])
         self.assertEqual(400, status)
+        self.assertEqual("VALIDATION_ERROR", error["code"])
+        self.assertIn("request_id", error)
+
+        status, error, _ = self.request("/api/conversations", "POST", {"title": {"unsafe": "coercion"}})
+        self.assertEqual(400, status)
+        self.assertEqual("VALIDATION_ERROR", error["code"])
+
+    def test_error_envelope_and_response_share_request_id(self):
+        request = urllib.request.Request(self.base + "/api/not-a-real-endpoint")
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(request, timeout=3)
+        response = caught.exception
+        payload = json.loads(response.read())
+        self.assertEqual(404, response.code)
+        self.assertEqual("NOT_FOUND", payload["code"])
+        self.assertEqual(payload["request_id"], response.headers["X-Request-ID"])
+        self.assertNotIn("Traceback", str(payload))
+
+    def test_sensitive_endpoint_uses_configured_rate_limit(self):
+        self.server.app.settings = replace(self.server.app.settings, email_rate_limit=1)
+        status, _, _ = self.request("/api/email/mock/inboxes", "POST", {})
+        self.assertEqual(201, status)
+        status, error, _ = self.request("/api/email/mock/inboxes", "POST", {})
+        self.assertEqual(429, status)
+        self.assertEqual("RATE_LIMITED", error["code"])
+        self.assertTrue(error["retryable"])
+        self.assertGreaterEqual(error["retry_after_seconds"], 1)
 
     def test_path_traversal_is_not_served(self):
         status, _, _ = self.request("/../run.py")

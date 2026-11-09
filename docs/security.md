@@ -13,7 +13,7 @@ GitHub Secrets are appropriate for explicitly authorized CI calls, not a substit
 
 ## Local-server boundary
 
-This is a single-user development application without login, CSRF tokens, per-user authorization, or rate limiting. Same-origin responses and a restrictive content security policy reduce exposure, but they do not make it safe as a public multi-user service. Keep the default `127.0.0.1` binding. Using `0.0.0.0` is for a trusted preview/LAN only.
+This is a single-user development application without login, CSRF tokens, per-user authorization, or tenant isolation. Configurable in-memory rate limits bound chat and sensitive email operations per client/bucket, but they reset on restart and are not a public-security boundary. Same-origin responses and a restrictive content security policy reduce exposure, but they do not make the app safe as a public multi-user service. Keep the default `127.0.0.1` binding. Using `0.0.0.0` is for a trusted preview/LAN only.
 
 Do not store sensitive personal information or credentials in memories. The extractor rejects common credential phrases, but that heuristic is not a guarantee. Manual memory creation accepts any non-empty text by design.
 

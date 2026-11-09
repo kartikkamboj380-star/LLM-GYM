@@ -34,6 +34,16 @@ def load_env_file(path: Path | None = None) -> None:
         os.environ.setdefault(key, value)
 
 
+def _int_env(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{name} must be between {minimum} and {maximum}")
+    return value
+
+
 def _float_env(name: str, default: float, minimum: float, maximum: float) -> float:
     try:
         value = float(os.getenv(name, str(default)))
@@ -57,6 +67,9 @@ class Settings:
     compatible_base_url: str = ""
     retrieval_limit: int = 4
     history_limit: int = 20
+    rate_limit_window: float = 60.0
+    chat_rate_limit: int = 30
+    email_rate_limit: int = 30
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -72,6 +85,9 @@ class Settings:
             gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip(),
             compatible_model=os.getenv("OPENAI_COMPATIBLE_MODEL", "change-me").strip(),
             compatible_base_url=os.getenv("OPENAI_COMPATIBLE_BASE_URL", "").strip().rstrip("/"),
-            retrieval_limit=int(os.getenv("MEMORY_RETRIEVAL_LIMIT", "4")),
-            history_limit=int(os.getenv("CHAT_HISTORY_LIMIT", "20")),
+            retrieval_limit=_int_env("MEMORY_RETRIEVAL_LIMIT", 4, 1, 20),
+            history_limit=_int_env("CHAT_HISTORY_LIMIT", 20, 1, 100),
+            rate_limit_window=_float_env("RATE_LIMIT_WINDOW_SECONDS", 60, 1, 3600),
+            chat_rate_limit=_int_env("CHAT_RATE_LIMIT_REQUESTS", 30, 1, 10000),
+            email_rate_limit=_int_env("EMAIL_RATE_LIMIT_REQUESTS", 30, 1, 10000),
         )
