@@ -20,6 +20,12 @@ Successful responses retain their existing JSON shapes. Error responses retain t
 
 Current categories include `VALIDATION_ERROR` (400), `NOT_FOUND` (404), `RATE_LIMITED` (429), `PROVIDER_ERROR` (502), and `INTERNAL_ERROR` (500). Rate-limited responses also include `retry_after_seconds`, `retryable: true`, and a `Retry-After` header. Stack traces are not returned to clients.
 
+## Dashboard and conversation management
+
+`GET /api/dashboard` returns current application/database status, real conversation/message/memory counts, non-secret provider configuration, recent conversations, and empty evaluation/test-run lists until persistent run storage is implemented. It does not invent activity.
+
+Conversations can be renamed with `PATCH /api/conversations/{id}` and `{"title":"New title"}`, deleted with `DELETE`, and exported with `GET /api/conversations/{id}/export?format=json` or `format=markdown`. Deletion cascades to messages; sourced memories remain with their source references cleared.
+
 ## Validation
 
 JSON bodies must be objects no larger than 1 MB. Text fields must actually be strings rather than coerced arrays/objects. Polling timeout/interval fields must be numbers, with provider-level range checks. Conversation content, memory content, tags, and provider selection retain their existing length/type rules.

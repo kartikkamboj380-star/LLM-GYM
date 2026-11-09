@@ -61,6 +61,34 @@ class MemoryStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def rename_conversation(self, conversation_id: str, title: str) -> dict:
+        clean_title = title.strip()[:200]
+        if not clean_title:
+            raise ValueError("Conversation title cannot be empty")
+        with self.database.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?",
+                (clean_title, utc_now(), conversation_id),
+            )
+            if cursor.rowcount == 0:
+                raise KeyError("Conversation not found")
+        conversation = self.get_conversation(conversation_id)
+        if conversation is None:
+            raise KeyError("Conversation not found")
+        return conversation
+
+    def delete_conversation(self, conversation_id: str) -> bool:
+        with self.database.connect() as connection:
+            cursor = connection.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+            return cursor.rowcount > 0
+
+    def stats(self) -> dict:
+        with self.database.connect() as connection:
+            return {
+                table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                for table in ("conversations", "messages", "memories")
+            }
+
     def get_conversation(self, conversation_id: str) -> dict | None:
         with self.database.connect() as connection:
             conversation = connection.execute(

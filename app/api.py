@@ -17,6 +17,7 @@ from .database import Database
 from .designarena import DesignArenaClient
 from .email import MockEmailProvider, VerificationCodeParser
 from .errors import APIError
+from .exporters import conversation_markdown
 from .memory import MemoryExtractor, MemoryStore
 from .rate_limit import InMemoryRateLimiter
 from .providers import available_providers
@@ -75,6 +76,11 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _json(self, status: int, payload: Any, headers: dict[str, str] | None = None) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self._headers(status, "application/json; charset=utf-8", len(body), headers)
+        self.wfile.write(body)
+
+    def _text(self, status: int, text: str, content_type: str, headers: dict[str, str] | None = None) -> None:
+        body = text.encode("utf-8")
+        self._headers(status, content_type, len(body), headers)
         self.wfile.write(body)
 
     @staticmethod
@@ -157,6 +163,9 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:  # noqa: N802
         self._dispatch("DELETE")
 
+    def do_PATCH(self) -> None:  # noqa: N802
+        self._dispatch("PATCH")
+
     def _api(self, method: str, path: str, query: dict[str, list[str]]) -> None:
         if method == "GET" and path == "/api/health":
             providers = available_providers(self.app.settings)
@@ -173,6 +182,20 @@ class RequestHandler(BaseHTTPRequestHandler):
         if method == "GET" and path == "/api/providers":
             self._json(200, {"default": self.app.settings.default_provider, "providers": available_providers(self.app.settings)})
             return
+        if method == "GET" and path == "/api/dashboard":
+            providers = available_providers(self.app.settings)
+            self._json(200, {
+                "application": {"status": "ok", "version": "0.1.0"},
+                "database": {"status": "ok" if self.app.database.healthcheck() else "error", "schema_version": self.app.database.schema_version()},
+                "counts": self.app.store.stats(),
+                "providers": providers,
+                "configured_provider_count": sum(1 for provider in providers if provider["configured"] and provider["external"]),
+                "email": {"provider": "mock", "status": "local-only", "configured": True},
+                "recent_conversations": self.app.store.list_conversations(5),
+                "evaluation": {"status": "cli-available", "recent_runs": []},
+                "test_runs": {"status": "not-persisted", "recent_runs": []},
+            })
+            return
         if method == "GET" and path == "/api/conversations":
             self._json(200, {"conversations": self.app.store.list_conversations()})
             return
@@ -181,9 +204,38 @@ class RequestHandler(BaseHTTPRequestHandler):
             conversation = self.app.store.create_conversation(self._string(data, "title", "New conversation"))
             self._json(201, conversation)
             return
-        match = re.fullmatch(r"/api/conversations/([^/]+)", path)
+        match = re.fullmatch(r"/api/conversations/([^/]+)/export", path)
         if method == "GET" and match:
             conversation = self.app.store.get_conversation(match.group(1))
+            if conversation is None:
+                raise KeyError("Conversation not found")
+            export_format = query.get("format", ["json"])[0]
+            if export_format == "json":
+                self._json(200, {"export_version": 1, "conversation": conversation})
+                return
+            if export_format == "markdown":
+                conversation_id = conversation["id"]
+                self._text(
+                    200,
+                    conversation_markdown(conversation),
+                    "text/markdown; charset=utf-8",
+                    {"Content-Disposition": f'attachment; filename="conversation-{conversation_id}.md"'},
+                )
+                return
+            raise ValueError("Export format must be json or markdown")
+        match = re.fullmatch(r"/api/conversations/([^/]+)", path)
+        if match and method in {"GET", "PATCH", "DELETE"}:
+            conversation_id = match.group(1)
+            if method == "PATCH":
+                data = self._read_json()
+                self._json(200, self.app.store.rename_conversation(conversation_id, self._string(data, "title")))
+                return
+            if method == "DELETE":
+                if not self.app.store.delete_conversation(conversation_id):
+                    raise KeyError("Conversation not found")
+                self._json(200, {"deleted": True})
+                return
+            conversation = self.app.store.get_conversation(conversation_id)
             if conversation is None:
                 raise KeyError("Conversation not found")
             self._json(200, conversation)

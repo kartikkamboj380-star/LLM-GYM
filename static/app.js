@@ -39,7 +39,45 @@ function showView(name) {
     tab.classList.toggle("active", selected);
     tab.setAttribute("aria-selected", String(selected));
   });
-  if (name === "memory") loadMemories();
+  if (name === "memory") loadMemories().catch((error) => toast(error.message, true));
+  if (name === "dashboard") loadDashboard().catch((error) => toast(error.message, true));
+}
+
+async function loadDashboard() {
+  const data = await api("/api/dashboard");
+  $("#dashboard-app-status").textContent = `${data.application.status === "ok" ? "Online" : "Unavailable"} · Database ${data.database.status}`;
+  $("#dashboard-app-detail").textContent = `App v${data.application.version} · SQLite schema v${data.database.schema_version}`;
+  $("#dashboard-provider-count").textContent = String(data.configured_provider_count);
+  $("#dashboard-provider-detail").textContent = `External providers configured · Offline mock ${data.providers.find((item) => item.id === "mock")?.configured ? "ready" : "unavailable"}`;
+  $("#dashboard-memory-count").textContent = String(data.counts.memories);
+  $("#dashboard-message-count").textContent = `${data.counts.messages} messages in ${data.counts.conversations} conversations`;
+  $("#dashboard-email-status").textContent = `${data.email.provider === "mock" ? "Mock" : data.email.provider} · ${data.email.status}`;
+  $("#dashboard-evaluation-status").textContent = data.evaluation.recent_runs.length ? `${data.evaluation.recent_runs.length} saved runs` : "CLI available; no persisted runs.";
+  $("#dashboard-test-status").textContent = data.test_runs.recent_runs.length ? `${data.test_runs.recent_runs.length} saved runs` : "No persisted browser test runs.";
+  const container = $("#dashboard-conversations");
+  container.replaceChildren();
+  if (!data.recent_conversations.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "No conversations yet. Open chat to begin.";
+    container.append(empty);
+    return;
+  }
+  data.recent_conversations.forEach((conversation) => {
+    const button = document.createElement("button");
+    button.className = "dashboard-conversation";
+    const title = document.createElement("strong");
+    title.textContent = conversation.title;
+    const meta = document.createElement("small");
+    meta.textContent = `${conversation.message_count} messages · ${conversation.updated_at}`;
+    button.append(title, meta);
+    button.addEventListener("click", async () => {
+      state.conversationId = conversation.id;
+      showView("chat");
+      await Promise.all([loadConversations(), loadConversation()]);
+    });
+    container.append(button);
+  });
 }
 
 async function loadProviders() {
@@ -134,6 +172,58 @@ async function loadConversation() {
     conversation.messages.forEach((message) => container.append(renderMessage(message)));
   }
   container.scrollTop = container.scrollHeight;
+}
+
+async function renameConversation() {
+  if (!state.conversationId) return;
+  const proposed = window.prompt("Conversation name", $("#conversation-title").textContent);
+  if (proposed === null) return;
+  if (!proposed.trim()) { toast("Conversation name cannot be empty.", true); return; }
+  const button = $("#rename-chat");
+  busy(button, true);
+  try {
+    await api(`/api/conversations/${encodeURIComponent(state.conversationId)}`, { method: "PATCH", body: { title: proposed } });
+    await Promise.all([loadConversations(), loadConversation()]);
+    toast("Conversation renamed.");
+  } catch (error) { toast(error.message, true); }
+  finally { busy(button, false); }
+}
+
+async function deleteConversation() {
+  if (!state.conversationId || !window.confirm("Delete this conversation and its messages? Sourced memories will remain without the conversation link.")) return;
+  const button = $("#delete-chat");
+  busy(button, true);
+  try {
+    await api(`/api/conversations/${encodeURIComponent(state.conversationId)}`, { method: "DELETE" });
+    state.conversationId = null;
+    await loadConversations();
+    toast("Conversation deleted.");
+  } catch (error) { toast(error.message, true); }
+  finally { busy(button, false); }
+}
+
+async function exportConversation() {
+  if (!state.conversationId) return;
+  const button = $("#export-chat");
+  busy(button, true, "Exporting…");
+  try {
+    const response = await fetch(`/api/conversations/${encodeURIComponent(state.conversationId)}/export?format=markdown`);
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: "Export failed" }));
+      throw new Error(error.error || "Export failed");
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `conversation-${state.conversationId}.md`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    toast("Markdown export downloaded.");
+  } catch (error) { toast(error.message, true); }
+  finally { busy(button, false); }
 }
 
 async function sendMessage(event) {
@@ -290,6 +380,11 @@ async function loadArenas() {
 async function initialize() {
   document.querySelectorAll(".nav-item").forEach((tab) => tab.addEventListener("click", () => showView(tab.dataset.view)));
   $("#new-chat").addEventListener("click", () => createConversation().catch((error) => toast(error.message, true)));
+  $("#rename-chat").addEventListener("click", renameConversation);
+  $("#delete-chat").addEventListener("click", deleteConversation);
+  $("#export-chat").addEventListener("click", exportConversation);
+  $("#refresh-dashboard").addEventListener("click", () => loadDashboard().then(() => toast("Dashboard refreshed.")).catch((error) => toast(error.message, true)));
+  document.querySelectorAll("[data-open-view]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.openView)));
   $("#chat-form").addEventListener("submit", sendMessage);
   $("#provider-select").addEventListener("change", updateProviderNote);
   $("#extract-memory").addEventListener("click", extractMemories);
@@ -307,6 +402,7 @@ async function initialize() {
     $("#server-status").textContent = "Local server online";
     await loadProviders();
     await loadConversations();
+    await loadDashboard();
   } catch (error) {
     $("#server-status").textContent = "Connection failed";
     toast(error.message, true);

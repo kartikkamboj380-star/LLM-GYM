@@ -30,6 +30,25 @@ class MemoryStoreTests(unittest.TestCase):
         self.assertEqual(["user", "assistant"], [message["role"] for message in loaded["messages"]])
         self.assertEqual(2, reopened.list_conversations()[0]["message_count"])
 
+    def test_conversation_rename_delete_and_cascade(self):
+        conversation = self.store.create_conversation("Original")
+        message = self.store.add_message(conversation["id"], "user", "Hello")
+        memory = self.store.add_memory(
+            "A sourced fact",
+            source_conversation_id=conversation["id"],
+            source_message_id=message["id"],
+        )
+        renamed = self.store.rename_conversation(conversation["id"], "Renamed")
+        self.assertEqual("Renamed", renamed["title"])
+        self.assertEqual({"conversations": 1, "messages": 1, "memories": 1}, self.store.stats())
+        self.assertTrue(self.store.delete_conversation(conversation["id"]))
+        self.assertIsNone(self.store.get_conversation(conversation["id"]))
+        remaining = self.store.search("sourced")[0]
+        self.assertEqual(memory["id"], remaining["id"])
+        self.assertIsNone(remaining["source_conversation_id"])
+        self.assertIsNone(remaining["source_message_id"])
+        self.assertFalse(self.store.delete_conversation(conversation["id"]))
+
     def test_memory_search_ranks_relevant_fact(self):
         self.store.add_memory("My favorite language is Python", ["profile"])
         self.store.add_memory("I plan to study databases on Friday", ["schedule"])

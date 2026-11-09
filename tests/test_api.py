@@ -88,6 +88,31 @@ class APIIntegrationTests(unittest.TestCase):
         status, loaded, _ = self.request(f"/api/conversations/{conversation_id}")
         self.assertEqual(4, len(loaded["messages"]))
 
+    def test_dashboard_rename_export_and_delete_conversation(self):
+        _, conversation, _ = self.request("/api/conversations", "POST", {"title": "Before"})
+        conversation_id = conversation["id"]
+        self.request(f"/api/conversations/{conversation_id}/messages", "POST", {"content": "Hello", "provider": "mock"})
+        status, dashboard, _ = self.request("/api/dashboard")
+        self.assertEqual(200, status)
+        self.assertEqual(1, dashboard["counts"]["conversations"])
+        self.assertEqual(2, dashboard["counts"]["messages"])
+        self.assertEqual("local-only", dashboard["email"]["status"])
+        self.assertEqual([], dashboard["test_runs"]["recent_runs"])
+
+        status, renamed, _ = self.request(f"/api/conversations/{conversation_id}", "PATCH", {"title": "After"})
+        self.assertEqual(200, status)
+        self.assertEqual("After", renamed["title"])
+        status, exported, content_type = self.request(f"/api/conversations/{conversation_id}/export?format=markdown")
+        self.assertEqual(200, status)
+        self.assertIn("text/markdown", content_type)
+        self.assertIn("# After", exported)
+        self.assertIn("Hello", exported)
+        status, deleted, _ = self.request(f"/api/conversations/{conversation_id}", "DELETE")
+        self.assertEqual(200, status)
+        self.assertTrue(deleted["deleted"])
+        status, _, _ = self.request(f"/api/conversations/{conversation_id}")
+        self.assertEqual(404, status)
+
     def test_complete_mock_email_api_workflow(self):
         status, inbox, _ = self.request("/api/email/mock/inboxes", "POST", {})
         self.assertEqual(201, status)

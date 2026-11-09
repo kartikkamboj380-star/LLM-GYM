@@ -19,14 +19,29 @@
   </header>
 
   <nav class="view-nav" aria-label="Application sections" role="tablist">
-    <button class="nav-item active" id="tab-chat" data-view="chat" role="tab" aria-selected="true" aria-controls="view-chat"><span aria-hidden="true">01</span> Chat</button>
-    <button class="nav-item" id="tab-memory" data-view="memory" role="tab" aria-selected="false" aria-controls="view-memory"><span aria-hidden="true">02</span> Memory</button>
-    <button class="nav-item" id="tab-inbox" data-view="inbox" role="tab" aria-selected="false" aria-controls="view-inbox"><span aria-hidden="true">03</span> Test inbox</button>
-    <button class="nav-item" id="tab-arena" data-view="arena" role="tab" aria-selected="false" aria-controls="view-arena"><span aria-hidden="true">04</span> Arena API</button>
+    <button class="nav-item active" id="tab-dashboard" data-view="dashboard" role="tab" aria-selected="true" aria-controls="view-dashboard"><span aria-hidden="true">01</span> Dashboard</button>
+    <button class="nav-item" id="tab-chat" data-view="chat" role="tab" aria-selected="false" aria-controls="view-chat"><span aria-hidden="true">02</span> Chat</button>
+    <button class="nav-item" id="tab-memory" data-view="memory" role="tab" aria-selected="false" aria-controls="view-memory"><span aria-hidden="true">03</span> Memory</button>
+    <button class="nav-item" id="tab-inbox" data-view="inbox" role="tab" aria-selected="false" aria-controls="view-inbox"><span aria-hidden="true">04</span> Test inbox</button>
+    <button class="nav-item" id="tab-arena" data-view="arena" role="tab" aria-selected="false" aria-controls="view-arena"><span aria-hidden="true">05</span> Arena API</button>
   </nav>
 
   <main>
-    <section id="view-chat" class="view active" role="tabpanel" aria-labelledby="tab-chat">
+    <section id="view-dashboard" class="view active" role="tabpanel" aria-labelledby="tab-dashboard">
+      <div class="section-header"><div><p class="eyebrow">System overview</p><h1>Your local learning lab.</h1><p>Live status from this backend and database. External providers remain unconnected until you configure and test them.</p></div><button id="refresh-dashboard" class="button secondary compact">Refresh</button></div>
+      <div class="dashboard-grid">
+        <section class="card status-card"><p class="eyebrow">Application</p><div class="stat-line"><strong id="dashboard-app-status">Checking</strong><span class="status-dot"></span></div><p id="dashboard-app-detail">Backend and schema status loading…</p></section>
+        <section class="card status-card"><p class="eyebrow">AI providers</p><strong id="dashboard-provider-count" class="stat-number">—</strong><p id="dashboard-provider-detail">Checking configuration…</p></section>
+        <section class="card status-card"><p class="eyebrow">Persistent memory</p><strong id="dashboard-memory-count" class="stat-number">—</strong><p id="dashboard-message-count">Saved memories</p></section>
+        <section class="card status-card"><p class="eyebrow">Email lab</p><strong id="dashboard-email-status">Mock · local only</strong><p>No real inbox or external delivery is configured.</p></section>
+      </div>
+      <div class="dashboard-lower">
+        <section class="card"><div class="card-title-row"><h2>Recent conversations</h2><button class="text-button" data-open-view="chat">Open chat</button></div><div id="dashboard-conversations" class="dashboard-list" aria-live="polite"><p class="muted">Loading conversations…</p></div></section>
+        <section class="card"><h2>Learning activity</h2><div class="activity-row"><div><strong>Evaluations</strong><p id="dashboard-evaluation-status">CLI available; no persisted runs.</p></div><span class="pill">CLI</span></div><div class="activity-row"><div><strong>Browser test runs</strong><p id="dashboard-test-status">No persisted browser test runs.</p></div><span class="pill">None</span></div><p class="field-note">Counts and statuses come from /api/dashboard. Empty activity is real, not sample data.</p></section>
+      </div>
+    </section>
+
+    <section id="view-chat" class="view" role="tabpanel" aria-labelledby="tab-chat" hidden>
       <div class="chat-layout">
         <aside class="conversations-panel">
           <div class="panel-heading"><h2>Conversations</h2><button id="new-chat" class="icon-button" aria-label="New conversation">+ New</button></div>
@@ -35,7 +50,7 @@
         <section class="chat-panel" aria-label="Active conversation">
           <div class="chat-heading">
             <div><p class="eyebrow">Persistent session</p><h1 id="conversation-title">New conversation</h1></div>
-            <button id="extract-memory" class="button secondary compact" title="Extract explicit facts from this conversation">Extract facts</button>
+            <div class="chat-actions"><button id="rename-chat" class="button secondary compact">Rename</button><button id="export-chat" class="button secondary compact">Export</button><button id="extract-memory" class="button secondary compact" title="Extract explicit facts from this conversation">Extract facts</button><button id="delete-chat" class="button danger compact">Delete</button></div>
           </div>
           <div id="messages" class="messages" aria-live="polite" aria-busy="false">
             <div class="empty-state" id="chat-empty"><span class="empty-icon" aria-hidden="true">↳</span><h2>Train your workflow, not the model.</h2><p>Start with the offline mock, then connect a provider when you are ready. Your conversation and selected memories persist in SQLite.</p></div>
@@ -79,7 +94,7 @@
     </section>
 
     <section id="view-inbox" class="view" role="tabpanel" aria-labelledby="tab-inbox" hidden>
-      <div class="section-header"><div><p class="eyebrow">Safe verification workflow</p><h1>A test inbox. Nothing more.</h1><p>Simulate delivery and parse numeric or alphanumeric codes. Messages stay in memory and disappear when the server restarts.</p></div><span class="pill safe">Mock only</span></div>
+      <div class="section-header"><div><p class="eyebrow">Safe verification workflow</p><h1>Mock Inbox — Local Testing Only.</h1><p>Simulate delivery and parse numeric or alphanumeric codes. Messages stay in memory and disappear when the server restarts.</p></div><span class="pill safe">Mock only</span></div>
       <div class="email-layout">
         <section class="card email-controls">
           <ol class="workflow-steps">

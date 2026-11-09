@@ -10,8 +10,11 @@ A local-first, Android-friendly AI learning lab with persistent chat memory, mod
 
 | Feature | Status | Credentials? |
 |---|---|---|
+| Live local dashboard and mobile navigation | Working locally | No |
 | Mobile web chat and conversation history | Working locally | No, with `mock` |
+| Conversation rename, delete, JSON/Markdown export | Working locally | No |
 | Persistent SQLite messages and knowledge base | Working locally | No |
+| Versioned, data-preserving SQLite migrations | Working locally | No |
 | Search and relevant-memory injection into new chats | Working locally | No |
 | Explicit fact extraction from your own conversations | Working locally | No |
 | Numeric and mixed alphanumeric mock verification | Working locally | No |
@@ -205,8 +208,10 @@ More detail: [architecture and phased plan](docs/ARCHITECTURE.md) · [repository
 |---|---|---|
 | GET | `/api/health` | Server and database health |
 | GET | `/api/providers` | Model names and configured booleans, never keys |
+| GET | `/api/dashboard` | Real local status, counts, recent activity |
 | GET/POST | `/api/conversations` | List/create conversations |
-| GET | `/api/conversations/{id}` | Conversation with messages |
+| GET/PATCH/DELETE | `/api/conversations/{id}` | Retrieve, rename, or delete a conversation |
+| GET | `/api/conversations/{id}/export?format=json\|markdown` | Export a conversation |
 | POST | `/api/conversations/{id}/messages` | Chat with selected provider |
 | GET/POST | `/api/memory` | Search/list or add knowledge |
 | POST | `/api/memory/extract` | Extract explicit facts from owned chat |
