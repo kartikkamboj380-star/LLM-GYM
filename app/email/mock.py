@@ -58,7 +58,12 @@ class MockEmailProvider(EmailProvider):
             code = "".join(secrets.choice(string.digits) for _ in range(6))
         elif code_type == "alphanumeric":
             alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-            code = "T" + "".join(secrets.choice(alphabet) for _ in range(5))
+            characters = [secrets.choice(alphabet) for _ in range(5)]
+            # "Alphanumeric" must always exercise the parser's mixed-code path;
+            # unconstrained random generation can otherwise produce letters only.
+            if not any(character.isdigit() for character in characters):
+                characters[secrets.randbelow(len(characters))] = secrets.choice(string.digits)
+            code = "T" + "".join(characters)
         else:
             raise ValueError("Code type must be numeric or alphanumeric")
         return self.send_message(

@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from app.email import MockEmailProvider, VerificationCodeParser
 
@@ -42,6 +43,21 @@ class MockEmailTests(unittest.TestCase):
         result = self.provider.poll_for_code(self.inbox.id, timeout_seconds=0)
         self.assertTrue(result["found"])
         self.assertRegex(result["code"], r"^[A-Z0-9]{6}$")
+
+    def test_alphanumeric_generator_forces_a_digit_when_randomness_returns_letters(self):
+        alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+        def mostly_letters(characters):
+            return "A" if characters == alphabet else "2"
+
+        with patch("app.email.mock.secrets.choice", side_effect=mostly_letters), patch(
+            "app.email.mock.secrets.randbelow", return_value=3
+        ):
+            message = self.provider.send_demo_verification(self.inbox.id, "alphanumeric")
+        self.assertIn("TAAA2A", message.text)
+        result = self.provider.poll_for_code(self.inbox.id, timeout_seconds=0)
+        self.assertTrue(result["found"])
+        self.assertEqual("TAAA2A", result["code"])
 
     def test_empty_poll_returns_without_fixed_delay(self):
         result = self.provider.poll_for_code(self.inbox.id, timeout_seconds=0)
